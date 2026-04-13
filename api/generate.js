@@ -35,12 +35,41 @@ module.exports = async function handler(req, res) {
   });
 
   try {
-    const question = await callAnthropic(API_KEY, body);
+    const question = await callWithRetry(API_KEY, body);
     res.status(200).json({ question });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Noe gikk galt.' });
   }
 };
+
+async function callWithRetry(apiKey, body, attempts = 2) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await callAnthropic(apiKey, body);
+    } catch (err) {
+      const isOverloaded = err.code === 'overloaded';
+      const isLastAttempt = i === attempts - 1;
+      if (isOverloaded && !isLastAttempt) {
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+function friendlyError(apiError) {
+  switch (apiError.type) {
+    case 'overloaded_error':
+      return 'API-en er overbelastet akkurat nå – prøver igjen...';
+    case 'authentication_error':
+      return 'Ugyldig API-nøkkel. Sjekk ANTHROPIC_API_KEY i Vercel.';
+    case 'rate_limit_error':
+      return 'For mange forespørsler. Vent litt og prøv igjen.';
+    default:
+      return apiError.message || 'Noe gikk galt med API-kallet.';
+  }
+}
 
 function callAnthropic(apiKey, body) {
   return new Promise((resolve, reject) => {
@@ -63,7 +92,9 @@ function callAnthropic(apiKey, body) {
         try {
           const parsed = JSON.parse(data);
           if (parsed.error) {
-            reject(new Error(parsed.error.message || 'API-feil'));
+            const err = new Error(friendlyError(parsed.error));
+            err.code = parsed.error.type;
+            reject(err);
             return;
           }
           resolve(parsed.content[0].text.trim());
