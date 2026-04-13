@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dagens Sjekk-inn</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #0d0d1a;
+      --surface: #111120;
+      --cyan:    #00e5ff;
+      --magenta: #ff00c8;
+      --amber:   #ffb300;
+      --green:   #39d353;
+      --text:    #dde0ff;
+      --dim:     #6060a0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Press Start 2P', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 16px 48px;
+      position: relative;
+      overflow-x: hidden;
+      gap: 28px;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        transparent 3px,
+        rgba(0, 0, 0, 0.06) 3px,
+        rgba(0, 0, 0, 0.06) 4px
+      );
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* Pixel grid background */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 229, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 229, 255, 0.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    main {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 620px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; }
+
+    h1 {
+      font-size: 20px;
+      line-height: 1.5;
+      color: var(--cyan);
+      text-shadow:
+        0 0 12px rgba(0, 229, 255, 0.7),
+        0 0 30px rgba(0, 229, 255, 0.35);
+      letter-spacing: 3px;
+    }
+
+    .subtitle {
+      margin-top: 14px;
+      font-size: 7px;
+      color: var(--dim);
+      letter-spacing: 2px;
+    }
+
+    /* ── Canvas scene ── */
+    .canvas-wrap {
+      width: 100%;
+      border: 2px solid rgba(0, 229, 255, 0.15);
+      box-shadow: 0 0 40px rgba(0, 229, 255, 0.07);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* ── Dialogue box ── */
+    .dialogue-box {
+      width: 100%;
+      background: var(--surface);
+      border: 4px solid var(--cyan);
+      box-shadow:
+        0 0 0 4px var(--bg),
+        0 0 0 8px var(--cyan),
+        0 0 50px rgba(0, 229, 255, 0.12),
+        inset 0 0 30px rgba(0, 229, 255, 0.04);
+      padding: 24px 28px;
+      min-height: 110px;
+      position: relative;
+    }
+
+    /* Corner gems */
+    .dialogue-box .gem {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: var(--amber);
+      box-shadow: 0 0 8px rgba(255, 179, 0, 0.6);
+    }
+    .gem-tl { top:  -4px; left:  -4px; }
+    .gem-tr { top:  -4px; right: -4px; }
+    .gem-bl { bottom: -4px; left:  -4px; }
+    .gem-br { bottom: -4px; right: -4px; }
+
+    .dialogue-inner {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      min-height: 64px;
+    }
+
+    .prompt-arrow {
+      color: var(--cyan);
+      flex-shrink: 0;
+      margin-top: 1px;
+      font-size: 10px;
+    }
+
+    #question-area {
+      flex: 1;
+      font-size: 9px;
+      line-height: 2.4;
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    /* Blinking cursor */
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+    .cursor {
+      display: inline-block;
+      color: var(--cyan);
+      animation: blink 0.8s step-end infinite;
+    }
+    .cursor-hidden { display: none; }
+
+    /* Loading dots */
+    @keyframes dot-pulse {
+      0%, 80%, 100% { opacity: 0.15; transform: translateY(0); }
+      40%            { opacity: 1;    transform: translateY(-3px); }
+    }
+    .loading-dots { display: inline-block; color: var(--dim); }
+    .loading-dots span {
+      display: inline-block;
+      animation: dot-pulse 1.4s ease-in-out infinite;
+      font-size: 14px;
+    }
+    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    /* ── Button ── */
+    .btn-wrap { display: flex; justify-content: center; width: 100%; }
+
+    button {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 9px;
+      letter-spacing: 1px;
+      background: var(--bg);
+      color: var(--amber);
+      border: 3px solid var(--amber);
+      padding: 14px 28px;
+      cursor: pointer;
+      transition: transform 60ms, box-shadow 60ms, color 60ms, border-color 60ms;
+      box-shadow:
+        4px 4px 0 #6b4d00,
+        0 0 20px rgba(255, 179, 0, 0.1);
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translate(-2px, -2px);
+      color: #ffd966;
+      border-color: #ffd966;
+      box-shadow:
+        6px 6px 0 #6b4d00,
+        0 0 30px rgba(255, 217, 102, 0.25);
+    }
+
+    button:active:not(:disabled) {
+      transform: translate(2px, 2px);
+      box-shadow:
+        2px 2px 0 #6b4d00,
+        0 0 10px rgba(255, 179, 0, 0.08);
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ── Footer ── */
+    footer {
+      font-size: 6px;
+      color: var(--dim);
+      opacity: 0.45;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 480px) {
+      body { padding: 20px 12px 36px; gap: 20px; }
+      h1 { font-size: 13px; letter-spacing: 2px; }
+      .subtitle { font-size: 6px; }
+      .dialogue-box { padding: 18px 16px; min-height: 90px; }
+      #question-area { font-size: 8px; line-height: 2.2; }
+      button { font-size: 8px; padding: 12px 16px; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>DAGENS<br>SJEKK-INN</h1>
+      <p class="subtitle">// dagens spørsmål til teamet</p>
+    </header>
+
+    <div class="canvas-wrap">
+      <canvas id="scene" width="720" height="210"></canvas>
+    </div>
+
+    <div class="dialogue-box">
+      <div class="gem gem-tl"></div>
+      <div class="gem gem-tr"></div>
+      <div class="gem gem-bl"></div>
+      <div class="gem gem-br"></div>
+      <div class="dialogue-inner">
+        <span class="prompt-arrow">▶</span>
+        <div id="question-area">
+          <span id="question-text"></span><span class="cursor" id="cursor">_</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-wrap">
+      <button id="gen-btn">[ NYTT SPØRSMÅL ]</button>
+    </div>
+
+    <footer>POWERED BY CLAUDE · PIXEL STANDUP v1.0</footer>
+  </main>
+
+  <script>
+  /* =====================================================================
+     CANVAS — pixel art standup scene
+  ===================================================================== */
+  (function () {
+    const canvas = document.getElementById('scene');
+    const ctx = canvas.getContext('2d');
+    const W = 720, H = 210;
+
+    // Scale: 1 logical unit = P canvas pixels
+    const P = 3;
+    const FLOOR_Y = 185; // feet land here
+
+    /* ── Characters — 5 women, 5 men ── */
+    const chars = [
+      // ── Left group (facing right toward whiteboard) ──
+      // Man 1 — navy, light skin, short hair
+      { cx:  32, phase: 0.0, skin: '#f4c28a', hair: '#2d1800', shirt: '#0055aa', pants: '#1e1e50', shoes: '#1a1000', hairStyle: 'short',  facingRight: true,  blinkAt: 3200, blinking: false },
+      // Woman 1 — coral top, fair skin, long auburn hair
+      { cx:  76, phase: 0.7, skin: '#f5d0a0', hair: '#8b2c1a', shirt: '#d45080', pants: '#2a1040', shoes: '#1a1000', hairStyle: 'long',   facingRight: true,  blinkAt: 6100, blinking: false },
+      // Man 2 — forest green, medium-dark skin, short black hair
+      { cx: 120, phase: 1.4, skin: '#c9824e', hair: '#1a0e00', shirt: '#27a060', pants: '#1a3022', shoes: '#1a1000', hairStyle: 'short',  facingRight: true,  blinkAt: 1900, blinking: false },
+      // Woman 2 — lavender top, medium skin, long dark-red hair
+      { cx: 164, phase: 2.1, skin: '#d4956a', hair: '#6e1010', shirt: '#8855cc', pants: '#22103a', shoes: '#1a1000', hairStyle: 'long',   facingRight: true,  blinkAt: 4600, blinking: false },
+      // Man 3 — orange hoodie, dark skin, medium hair
+      { cx: 208, phase: 2.8, skin: '#7a4420', hair: '#1a0a00', shirt: '#cc5500', pants: '#2d1800', shoes: '#1a1000', hairStyle: 'medium', facingRight: true,  blinkAt: 7300, blinking: false },
+
+      // ── Right group (facing left toward whiteboard) ──
+      // Woman 3 — teal top, pale skin, long blonde hair
+      { cx: 418, phase: 3.5, skin: '#f5e4c0', hair: '#c89820', shirt: '#18a09a', pants: '#103440', shoes: '#1a1000', hairStyle: 'long',   facingRight: false, blinkAt: 2300, blinking: false },
+      // Man 4 — yellow shirt, dark skin, short hair
+      { cx: 462, phase: 4.2, skin: '#7a4420', hair: '#1a0800', shirt: '#d4a800', pants: '#2a2000', shoes: '#1a1000', hairStyle: 'short',  facingRight: false, blinkAt: 5100, blinking: false },
+      // Woman 4 — magenta top, medium skin, long dark hair
+      { cx: 506, phase: 4.9, skin: '#c9824e', hair: '#1e1228', shirt: '#cc1480', pants: '#1a0828', shoes: '#1a1000', hairStyle: 'long',   facingRight: false, blinkAt: 8600, blinking: false },
+      // Man 5 — red shirt, light skin, short brown hair
+      { cx: 550, phase: 5.6, skin: '#f4c28a', hair: '#4a2000', shirt: '#cc2020', pants: '#301010', shoes: '#1a1000', hairStyle: 'short',  facingRight: false, blinkAt: 3900, blinking: false },
+      // Woman 5 — cyan top, dark skin, long black hair
+      { cx: 594, phase: 6.3, skin: '#a0642e', hair: '#0e0808', shirt: '#00a8cc', pants: '#0a2430', shoes: '#1a1000', hairStyle: 'long',   facingRight: false, blinkAt: 6800, blinking: false },
+    ];
+
+    /* ── Steam particles ── */
+    const steam = [
+      { bx: 641, by: 147, life: 0   },
+      { bx: 644, by: 147, life: 38  },
+      { bx: 648, by: 147, life: 76  },
+    ];
+
+    /* ── Helpers ── */
+    function R(gx, gy, gw, gh) {
+      ctx.fillRect(gx, gy, gw, gh);
+    }
+
+    /* ── Draw character ── */
+    function drawChar(c, ts) {
+      const bob = Math.sin(ts / 620 + c.phase) * 2.5;
+      const fy  = FLOOR_Y + bob; // current feet Y
+      const cx  = c.cx;
+
+      // Shoes
+      ctx.fillStyle = c.shoes;
+      R(cx - 4*P, fy - 2*P, 3*P, 2*P); // left
+      R(cx + 1*P, fy - 2*P, 3*P, 2*P); // right
+
+      // Legs
+      ctx.fillStyle = c.pants;
+      R(cx - 3*P, fy - 9*P,  2*P, 7*P); // left
+      R(cx + 1*P, fy - 9*P,  2*P, 7*P); // right
+      // Hips connector
+      R(cx - 3*P, fy - 11*P, 6*P, 2*P);
+
+      // Torso
+      ctx.fillStyle = c.shirt;
+      R(cx - 4*P, fy - 19*P, 8*P, 8*P);
+
+      // Arms
+      R(cx - 6*P, fy - 18*P, 2*P, 5*P); // left arm
+      R(cx + 4*P, fy - 18*P, 2*P, 5*P); // right arm
+
+      // Hands
+      ctx.fillStyle = c.skin;
+      R(cx - 6*P, fy - 13*P, 2*P, 2*P); // left hand
+      R(cx + 4*P, fy - 13*P, 2*P, 2*P); // right hand
+
+      // Neck
+      ctx.fillStyle = c.skin;
+      R(cx - P, fy - 21*P, 2*P, 2*P);
+
+      // Head
+      ctx.fillStyle = c.skin;
+      R(cx - 3*P, fy - 27*P, 6*P, 6*P);
+
+      // Hair — top row
+      ctx.fillStyle = c.hair;
+      R(cx - 3*P, fy - 27*P, 6*P, 2*P);
+      if (c.hairStyle === 'long') {
+        R(cx - 3*P, fy - 25*P, P, 3*P); // left side
+        R(cx + 2*P, fy - 25*P, P, 3*P); // right side
+      } else if (c.hairStyle === 'medium') {
+        R(cx - 3*P, fy - 25*P, P, P);
+        R(cx + 2*P, fy - 25*P, P, P);
+      }
+
+      // Eyes
+      if (!c.blinking) {
+        ctx.fillStyle = '#110800';
+        R(cx - 2*P, fy - 24*P, P, P); // left eye
+        R(cx +  P,  fy - 24*P, P, P); // right eye
+        // Tiny catchlight
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        R(cx - 2*P + 1, fy - 24*P,     1, 1);
+        R(cx +  P  + 1, fy - 24*P,     1, 1);
+      } else {
+        // Closed eyes — thin line
+        ctx.fillStyle = '#110800';
+        R(cx - 2*P, fy - 24*P, P, 1);
+        R(cx +  P,  fy - 24*P, P, 1);
+      }
+    }
+
+    function updateBlink(c, ts) {
+      if (ts >= c.blinkAt) {
+        if (!c.blinking) {
+          c.blinking = true;
+          c.blinkAt  = ts + 130;
+        } else {
+          c.blinking = false;
+          c.blinkAt  = ts + 2800 + Math.random() * 3500;
+        }
+      }
+    }
+
+    /* ── Whiteboard ── */
+    const WB = { x: 240, y: 44, w: 150, h: 128 };
+
+    const tasks = [
+      { w: 78,  done: true  },
+      { w: 105, done: true  },
+      { w: 68,  done: false },
+      { w: 92,  done: false },
+      { w: 55,  done: false },
+      { w: 115, done: false },
+      { w: 72,  done: false },
+    ];
+
+    function drawWhiteboard(ts) {
+      const { x, y, w, h } = WB;
+
+      // Drop shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      R(x + 5, y + 5, w, h);
+
+      // Wooden frame
+      ctx.fillStyle = '#8a6e54';
+      R(x - 5, y - 5, w + 10, h + 10);
+
+      // Board surface
+      ctx.fillStyle = '#f2ede2';
+      R(x, y, w, h);
+
+      // Header band
+      ctx.fillStyle = '#3a7fa8';
+      R(x, y, w, 17);
+
+      // "STANDUP" on header
+      ctx.fillStyle = '#e8f4ff';
+      ctx.font = 'bold 8px monospace';
+      ctx.textBaseline = 'top';
+      ctx.fillText('STANDUP', x + 7, y + 5);
+
+      // Task rows
+      for (let i = 0; i < tasks.length; i++) {
+        const t = tasks[i];
+        const ty = y + 24 + i * 14;
+
+        // Bullet
+        if (t.done) {
+          ctx.fillStyle = '#22aa55';
+          R(x + 6, ty + 1, 4, 4);
+          // Line (done)
+          ctx.fillStyle = '#a8c8a0';
+          R(x + 14, ty + 1, t.w, 5);
+          // Strikethrough
+          ctx.fillStyle = 'rgba(0,80,0,0.35)';
+          R(x + 14, ty + 3, t.w, 1);
+        } else {
+          ctx.fillStyle = '#aaa090';
+          R(x + 6, ty + 1, 4, 4);
+          ctx.fillStyle = '#7a8faa';
+          R(x + 14, ty + 1, t.w, 5);
+        }
+      }
+
+      // Blinking marker cursor at bottom
+      if (Math.floor(ts / 650) % 2 === 0) {
+        ctx.fillStyle = '#e85500';
+        R(x + 7, y + h - 12, 8, 4);
+      }
+    }
+
+    /* ── Coffee mug ── */
+    function drawCoffee(ts) {
+      const mx = 645, my = 165;
+
+      // Small side-table
+      ctx.fillStyle = '#2e1e0e';
+      R(mx - 14, my,      28, 5);
+      R(mx - 10, my + 5,  8,  20);
+      R(mx + 2,  my + 5,  8,  20);
+
+      // Mug body
+      ctx.fillStyle = '#c43a22';
+      R(mx - 8, my - 16, 16, 16);
+      // Mug highlight stripe
+      ctx.fillStyle = '#e05840';
+      R(mx - 7, my - 15,  5, 14);
+      // Handle
+      ctx.fillStyle = '#c43a22';
+      R(mx + 8,  my - 14, 3, 2); // top
+      R(mx + 10, my - 14, 2, 8); // right side
+      R(mx + 8,  my - 6,  3, 2); // bottom
+      // Coffee inside
+      ctx.fillStyle = '#1e0e00';
+      R(mx - 7, my - 15, 14, 4);
+      // Cream swirl (static)
+      ctx.fillStyle = '#c8a070';
+      R(mx - 2, my - 14, 4, 2);
+
+      // Steam particles
+      for (const sp of steam) {
+        const norm = (sp.life % 100) / 100;
+        const alpha = Math.max(0, 0.65 * (1 - norm * 1.4));
+        const rise = norm * 28;
+        const wiggle = Math.sin(sp.life * 0.22) * 2.5;
+        ctx.fillStyle = `rgba(190, 190, 230, ${alpha.toFixed(2)})`;
+        R(Math.round(sp.bx + wiggle), Math.round(sp.by - rise), 2, 3);
+      }
+    }
+
+    function updateSteam() {
+      for (const sp of steam) {
+        sp.life = (sp.life + 0.55) % 100;
+      }
+    }
+
+    /* ── Background ── */
+    function drawBackground() {
+      // Dark room
+      ctx.fillStyle = '#09091a';
+      R(0, 0, W, H);
+
+      // Wall (upper portion)
+      const wallGrad = ctx.createLinearGradient(0, 0, 0, 150);
+      wallGrad.addColorStop(0, '#0c0c20');
+      wallGrad.addColorStop(1, '#0f0f24');
+      ctx.fillStyle = wallGrad;
+      R(0, 0, W, 150);
+
+      // Floor
+      ctx.fillStyle = '#10101e';
+      R(0, 150, W, H - 150);
+
+      // Floor/wall edge
+      ctx.fillStyle = '#22224a';
+      R(0, 149, W, 2);
+
+      // Subtle floor grid
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.028)';
+      for (let gx = 0; gx < W; gx += 30) R(gx, 151, 1, H - 151);
+      for (let gy = 151; gy < H; gy += 15) R(0, gy, W, 1);
+
+      // Ambient glow around whiteboard
+      const glow = ctx.createRadialGradient(315, 108, 20, 315, 108, 200);
+      glow.addColorStop(0, 'rgba(80, 180, 255, 0.045)');
+      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow;
+      R(0, 0, W, H);
+
+      // Neon accent strip on ceiling
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.06)';
+      R(0, 0, W, 2);
+      ctx.fillStyle = 'rgba(255, 0, 200, 0.04)';
+      R(0, 3, W, 1);
+    }
+
+    /* ── Main render loop ── */
+    function render(ts) {
+      ctx.clearRect(0, 0, W, H);
+
+      drawBackground();
+      drawWhiteboard(ts);
+      updateSteam();
+      drawCoffee(ts);
+
+      for (const c of chars) {
+        updateBlink(c, ts);
+        drawChar(c, ts);
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  })();
+
+  /* =====================================================================
+     QUESTION GENERATION
+  ===================================================================== */
+  (function () {
+    const questionText = document.getElementById('question-text');
+    const cursor       = document.getElementById('cursor');
+    const genBtn       = document.getElementById('gen-btn');
+
+    let twTimer      = null;
+    let twCancelled  = false;
+
+    function cancelTypewriter() {
+      twCancelled = true;
+      if (twTimer) { clearTimeout(twTimer); twTimer = null; }
+    }
+
+    function typewriter(text, onDone) {
+      cancelTypewriter();
+      twCancelled = false;
+      questionText.textContent = '';
+      cursor.classList.remove('cursor-hidden');
+      let i = 0;
+      function tick() {
+        if (twCancelled) return;
+        if (i < text.length) {
+          questionText.textContent += text[i++];
+          twTimer = setTimeout(tick, 22);
+        } else {
+          if (onDone) onDone();
+        }
+      }
+      tick();
+    }
+
+    function showLoading() {
+      cancelTypewriter();
+      cursor.classList.add('cursor-hidden');
+      questionText.innerHTML =
+        '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>';
+      genBtn.disabled = true;
+    }
+
+    function showError(msg) {
+      cancelTypewriter();
+      cursor.classList.add('cursor-hidden');
+      questionText.textContent = msg;
+      genBtn.disabled = false;
+    }
+
+    async function generateQuestion() {
+      showLoading();
+      try {
+        const res = await fetch('/generate', { method: 'POST' });
+        if (!res.ok) {
+          let errMsg = 'Noe gikk galt. Prøv igjen.';
+          try { const j = await res.json(); if (j.error) errMsg = j.error; } catch (_) {}
+          showError(errMsg);
+          return;
+        }
+        const { question } = await res.json();
+        typewriter(question, () => { genBtn.disabled = false; });
+      } catch (_) {
+        showError('Kunne ikke nå serveren. Er den startet?');
+      }
+    }
+
+    genBtn.addEventListener('click', generateQuestion);
+    generateQuestion();
+  })();
+  </script>
+</body>
+</html>
