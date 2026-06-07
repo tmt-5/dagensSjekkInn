@@ -6,709 +6,524 @@
   <title>Dagens Sjekk-inn</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg:      #0d0d1a;
-      --surface: #111120;
-      --cyan:    #00e5ff;
-      --magenta: #ff00c8;
-      --amber:   #ffb300;
-      --green:   #39d353;
-      --text:    #dde0ff;
-      --dim:     #6060a0;
+      --bg:      #0d0e1c;
+      --card:    #1f233c;
+      --red:     #d92735;
+      --text:    #ffffff;
+      --dim:     rgba(255,255,255,0.4);
+      /* Timeline geometry — synced with schedule label width + gaps */
+      --tl:      193px;   /* center of connector from left edge */
+      --tl-arr:  188px;   /* arrow left  (tl - 5) */
+      --tl-dot:  186px;   /* dot left    (tl - 7) */
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Press Start 2P', monospace;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 28px 16px;
-      position: relative;
-      overflow-x: hidden;
-      gap: 28px;
-    }
-
-    /* Scanline overlay */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background: repeating-linear-gradient(
-        0deg,
-        transparent 0px,
-        transparent 3px,
-        rgba(0, 0, 0, 0.06) 3px,
-        rgba(0, 0, 0, 0.06) 4px
-      );
-      pointer-events: none;
-      z-index: 100;
-    }
-
-    /* Pixel grid background */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(0, 229, 255, 0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 229, 255, 0.025) 1px, transparent 1px);
-      background-size: 32px 32px;
-      pointer-events: none;
-      z-index: 0;
+      padding: 40px 24px;
     }
 
     main {
-      position: relative;
-      z-index: 1;
       width: 100%;
-      max-width: 620px;
+      max-width: 1200px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 28px;
+      gap: 40px;
     }
 
     /* ── Header ── */
-    header { text-align: center; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .week-badge {
+      background: var(--red);
+      border-radius: 20px;
+      padding: 14px 18px;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      white-space: nowrap;
+      line-height: 1;
+      min-width: 76px;
+      text-align: center;
+    }
 
     h1 {
-      font-size: 20px;
-      line-height: 1.5;
-      color: var(--cyan);
-      text-shadow:
-        0 0 12px rgba(0, 229, 255, 0.7),
-        0 0 30px rgba(0, 229, 255, 0.35);
-      letter-spacing: 3px;
+      font-size: 40px;
+      font-weight: 500;
+      letter-spacing: 1.4px;
+      line-height: 1.2;
     }
 
-    .subtitle {
-      margin-top: 14px;
-      font-size: 7px;
-      color: var(--dim);
-      letter-spacing: 2px;
+    .clock {
+      font-size: 32px;
+      font-weight: 500;
+      letter-spacing: 1.12px;
+      white-space: nowrap;
     }
 
-    /* ── Canvas scene ── */
-    .canvas-wrap {
+    /* ── Content area ── */
+    .content-area {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .main-row {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
       width: 100%;
-      border: 2px solid rgba(0, 229, 255, 0.15);
-      box-shadow: 0 0 40px rgba(0, 229, 255, 0.07);
     }
 
-    canvas {
-      display: block;
-      width: 100%;
-      height: auto;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-    }
-
-    /* ── Dialogue box ── */
-    .dialogue-box {
-      width: 100%;
-      background: var(--surface);
-      border: 4px solid var(--cyan);
-      box-shadow:
-        0 0 0 4px var(--bg),
-        0 0 0 8px var(--cyan),
-        0 0 50px rgba(0, 229, 255, 0.12),
-        inset 0 0 30px rgba(0, 229, 255, 0.04);
-      padding: 24px 28px;
-      min-height: 110px;
+    /* ── Schedule panel ── */
+    .schedule-panel {
+      width: 552px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
       position: relative;
     }
 
-    /* Corner gems */
-    .dialogue-box .gem {
+    /* Continuous vertical timeline line */
+    .schedule-panel::before {
+      content: '';
       position: absolute;
-      width: 8px;
-      height: 8px;
-      background: var(--amber);
-      box-shadow: 0 0 8px rgba(255, 179, 0, 0.6);
+      left: var(--tl);
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(255,255,255,0.55);
+      transform: translateX(-50%);
+      pointer-events: none;
     }
-    .gem-tl { top:  -4px; left:  -4px; }
-    .gem-tr { top:  -4px; right: -4px; }
-    .gem-bl { bottom: -4px; left:  -4px; }
-    .gem-br { bottom: -4px; right: -4px; }
 
-    .dialogue-inner {
+    /* Upward arrowhead at top of timeline */
+    .schedule-panel::after {
+      content: '';
+      position: absolute;
+      left: var(--tl-arr);
+      top: -7px;
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 8px solid rgba(255,255,255,0.55);
+      pointer-events: none;
+    }
+
+    .schedule-row {
       display: flex;
-      gap: 12px;
-      align-items: flex-start;
-      min-height: 64px;
+      gap: 40px;
+      align-items: center;
+      padding: 27px 28px;
+      border-radius: 20px;
+      position: relative;
     }
 
-    .prompt-arrow {
-      color: var(--cyan);
+    .schedule-row.active { background: var(--red); }
+
+    /* White dot on active row, centered on the timeline */
+    .schedule-row.active::after {
+      content: '';
+      position: absolute;
+      left: var(--tl-dot);
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: white;
+      z-index: 1;
+    }
+
+    .schedule-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
       flex-shrink: 0;
-      margin-top: 6px;
-      font-size: 10px;
+      align-self: stretch;
+    }
+
+    .schedule-label {
+      width: 134px;
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: 0.84px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    /* Spacer that occupies the connector column so detail text aligns correctly */
+    .schedule-connector { width: 30px; flex-shrink: 0; }
+
+    .schedule-detail {
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: 0.84px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* ── Question card ── */
+    .question-card {
+      flex: 1;
+      min-width: 0;
+      background: var(--card);
+      border-radius: 20px;
+      padding: 40px;
+      min-height: 260px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
     }
 
     #question-area {
       flex: 1;
-      font-size: 14px;
-      line-height: 2.4;
-      color: var(--text);
-      word-break: break-word;
+      font-size: 32px;
+      font-weight: 400;
+      line-height: 1.55;
+      letter-spacing: 1.12px;
+      padding-bottom: 64px; /* keep text above the logo */
     }
 
-    /* Blinking cursor */
+    /* Blinking cursor — a thin vertical bar */
     @keyframes blink {
       0%, 49% { opacity: 1; }
       50%, 100% { opacity: 0; }
     }
     .cursor {
       display: inline-block;
-      color: var(--cyan);
-      animation: blink 0.8s step-end infinite;
+      width: 2px;
+      height: 1em;
+      background: rgba(255,255,255,0.65);
+      vertical-align: text-bottom;
+      margin-left: 3px;
+      animation: blink 0.9s step-end infinite;
     }
     .cursor-hidden { display: none; }
 
     /* Loading dots */
     @keyframes dot-pulse {
-      0%, 80%, 100% { opacity: 0.15; transform: translateY(0); }
-      40%            { opacity: 1;    transform: translateY(-3px); }
+      0%, 80%, 100% { opacity: 0.18; transform: translateY(0); }
+      40%           { opacity: 1;    transform: translateY(-5px); }
     }
-    .loading-dots { display: inline-block; color: var(--dim); }
+    .loading-dots { color: rgba(255,255,255,0.5); }
     .loading-dots span {
       display: inline-block;
       animation: dot-pulse 1.4s ease-in-out infinite;
-      font-size: 14px;
+      font-size: 42px;
     }
     .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
     .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
 
-    /* ── Button ── */
-    .btn-wrap { display: flex; justify-content: center; width: 100%; }
-
-    button {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 9px;
-      letter-spacing: 1px;
-      background: var(--bg);
-      color: var(--amber);
-      border: 3px solid var(--amber);
-      padding: 14px 28px;
-      cursor: pointer;
-      transition: transform 60ms, box-shadow 60ms, color 60ms, border-color 60ms;
-      box-shadow:
-        4px 4px 0 #6b4d00,
-        0 0 20px rgba(255, 179, 0, 0.1);
-      white-space: nowrap;
-      user-select: none;
+    /* Alfa logo — bottom-right of the question card */
+    /* NOTE: Figma asset URLs expire after 7 days. Replace with permanent assets. */
+    .card-logo {
+      position: absolute;
+      bottom: 28px;
+      right: 28px;
+      width: 114px;
+      height: 44px;
+      opacity: 0.7;
+    }
+    /* Icon (signal symbol) — Figma: inset 0 61.93% 1.72% 0 → ~43×43px, top-left */
+    .logo-icon {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 43px;
+      height: 44px;
+      object-fit: contain;
+      object-position: left center;
+    }
+    /* Text "alfa" — Figma: inset 17.15% 0 18.87% 45.38% → ~62×28px, right side */
+    .logo-text {
+      position: absolute;
+      top: 8px;
+      right: 0;
+      width: 62px;
+      height: 28px;
+      object-fit: contain;
+      object-position: right center;
     }
 
-    button:hover:not(:disabled) {
-      transform: translate(-2px, -2px);
-      color: #ffd966;
-      border-color: #ffd966;
-      box-shadow:
-        6px 6px 0 #6b4d00,
-        0 0 30px rgba(255, 217, 102, 0.25);
-    }
-
-    button:active:not(:disabled) {
-      transform: translate(2px, 2px);
-      box-shadow:
-        2px 2px 0 #6b4d00,
-        0 0 10px rgba(255, 179, 0, 0.08);
-    }
-
-    button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    /* ── Footer ── */
-    footer {
-      font-size: 6px;
-      color: var(--dim);
-      opacity: 0.45;
-      letter-spacing: 1px;
-      text-align: center;
-    }
-
-    /* ── History ── */
-    .history-wrap {
-      width: 100%;
+    /* ── Action bar ── */
+    .action-bar {
       display: flex;
-      flex-direction: column;
       align-items: center;
       gap: 12px;
     }
 
-    .history-toggle {
-      font-size: 6px;
-      color: var(--dim);
-      background: transparent;
-      border: 1px solid rgba(96, 96, 160, 0.3);
-      padding: 8px 14px;
-      box-shadow: none;
-      letter-spacing: 1px;
+    /* Shared button reset */
+    button {
+      font-family: 'Inter', system-ui, sans-serif;
+      cursor: pointer;
+      border: none;
+      transition: background 140ms, opacity 120ms, transform 80ms;
     }
-    .history-toggle:hover:not(:disabled) {
-      color: var(--text);
-      border-color: var(--dim);
-      transform: none;
-      box-shadow: none;
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Action buttons (icon-only) */
+    .action-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.75);
+      background: rgba(31, 35, 60, 0.85);
+      border-radius: 16px;
+      padding: 13px;
+      width: 48px;
+      height: 48px;
     }
-    .history-toggle:active:not(:disabled) {
-      transform: none;
-      box-shadow: none;
+    .action-btn:hover:not(:disabled)  { background: rgba(46, 52, 88, 1); color: #fff; }
+    .action-btn:active:not(:disabled) { transform: scale(0.97); }
+
+    /* Reaction buttons */
+    .reaction-wrap {
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .reaction-wrap.is-visible { display: flex; }
+
+    .react-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.65);
+      background: rgba(31, 35, 60, 0.85);
+      border-radius: 12px;
+      padding: 0;
+      width: 44px;
+      height: 44px;
+    }
+    .react-btn:hover:not(:disabled) { color: #fff; background: rgba(46, 52, 88, 1); }
+    .react-btn.up:hover:not(:disabled)   { background: rgba(57, 211, 83, 0.2);  color: #39d353; }
+    .react-btn.down:hover:not(:disabled) { background: rgba(217, 39, 53, 0.2);  color: #ff6677; }
+    .react-btn:active:not(:disabled) { transform: scale(0.93); }
+
+    .reaction-status {
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.4px;
+      text-align: center;
     }
 
+    /* ── History panel ── */
     .history-panel {
       display: none;
-      width: 100%;
-      flex-direction: column;
-      gap: 0;
-      background: var(--surface);
-      border: 1px solid rgba(96, 96, 160, 0.25);
-      max-height: 280px;
+      background: var(--card);
+      border-radius: 20px;
+      padding: 28px 32px;
+      max-height: 340px;
       overflow-y: auto;
-      padding: 18px 20px;
+      width: 100%;
     }
-    .history-panel.is-open { display: flex; }
+    .history-panel.is-open { display: block; }
 
     .history-entry {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       padding: 14px 0;
-      border-bottom: 1px solid rgba(96, 96, 160, 0.12);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
     .history-entry:first-child { padding-top: 0; }
     .history-entry:last-child  { border-bottom: none; padding-bottom: 0; }
 
     .history-date {
-      font-size: 6px;
+      font-size: 11px;
+      font-weight: 500;
       color: var(--dim);
-      letter-spacing: 2px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
     }
     .history-question {
-      font-size: 8px;
-      color: var(--text);
-      line-height: 2.2;
+      font-size: 16px;
+      font-weight: 400;
+      color: #fff;
+      line-height: 1.65;
     }
     .history-empty {
-      font-size: 7px;
+      font-size: 14px;
       color: var(--dim);
       text-align: center;
-      padding: 8px 0;
+      padding: 12px 0;
       margin: 0;
     }
 
-    /* ── Reactions ── */
-    .reaction-wrap {
-      display: none;
-      align-items: center;
-      justify-content: center;
-      gap: 20px;
-      width: 100%;
-    }
-    .reaction-wrap.is-visible { display: flex; }
-
-    .react-btn {
-      font-size: 8px;
-      padding: 8px 14px;
-    }
-    .react-btn.up {
-      color: var(--green);
-      border-color: var(--green);
-      box-shadow: 3px 3px 0 #1a5e20, 0 0 14px rgba(57, 211, 83, 0.08);
-    }
-    .react-btn.down {
-      color: var(--magenta);
-      border-color: var(--magenta);
-      box-shadow: 3px 3px 0 #6b006b, 0 0 14px rgba(255, 0, 200, 0.08);
-    }
-    .react-btn.up:hover:not(:disabled) {
-      color: #6bff8a;
-      border-color: #6bff8a;
-      box-shadow: 5px 5px 0 #1a5e20, 0 0 24px rgba(57, 211, 83, 0.2);
-    }
-    .react-btn.down:hover:not(:disabled) {
-      color: #ff55e0;
-      border-color: #ff55e0;
-      box-shadow: 5px 5px 0 #6b006b, 0 0 24px rgba(255, 0, 200, 0.2);
-    }
-    .react-btn.up:active:not(:disabled)   { box-shadow: 1px 1px 0 #1a5e20; }
-    .react-btn.down:active:not(:disabled)  { box-shadow: 1px 1px 0 #6b006b; }
-
-    .reaction-status {
-      font-size: 6px;
-      color: var(--dim);
-      letter-spacing: 1px;
-      min-width: 60px;
-      text-align: center;
-    }
-
     /* ── Responsive ── */
-    @media (max-width: 480px) {
-      body { padding: 20px 12px 36px; gap: 20px; }
-      h1 { font-size: 13px; letter-spacing: 2px; }
-      .subtitle { font-size: 6px; }
-      .dialogue-box { padding: 18px 16px; min-height: 90px; }
-      #question-area { font-size: 8px; line-height: 2.2; }
-      button { font-size: 8px; padding: 12px 16px; width: 100%; }
+    @media (max-width: 900px) {
+      .main-row      { flex-direction: column; align-items: stretch; }
+      .schedule-panel { width: 100%; }
+      h1             { font-size: 28px; }
+      .week-badge    { font-size: 22px; padding: 11px 14px; min-width: 60px; border-radius: 14px; }
+      #question-area { font-size: 24px; }
+      .schedule-label, .schedule-detail { font-size: 18px; }
+    }
+
+    @media (max-width: 600px) {
+      :root {
+        /* padding 16 + label 90 + gap 12 + half-connector 15 = 133 */
+        --tl:     133px;
+        --tl-arr: 128px;
+        --tl-dot: 126px;
+      }
+      body           { padding: 24px 16px; }
+      main           { gap: 24px; }
+      h1             { font-size: 20px; letter-spacing: 0.6px; }
+      .week-badge    { font-size: 17px; padding: 9px 12px; min-width: 50px; border-radius: 12px; }
+      .clock         { font-size: 20px; }
+      .question-card { padding: 24px; min-height: 190px; }
+      #question-area { font-size: 18px; padding-bottom: 52px; }
+      .schedule-label { font-size: 14px; width: 90px; }
+      .schedule-detail { font-size: 14px; }
+      .schedule-left  { gap: 12px; }
+      .schedule-row   { padding: 18px 16px; gap: 24px; }
+      .action-btn    { font-size: 14px; padding: 11px 16px; }
     }
   </style>
 </head>
 <body>
   <main>
+    <!-- Header -->
     <header>
-      <h1>ALFA SP/PW:<br>DAGENS SJEKK-INN</h1>
-      <p class="subtitle">// dagens spørsmål til teamet</p>
+      <div class="header-left">
+        <div class="week-badge" id="week-badge">W–</div>
+        <h1>Dagens sjekk-inn spørsmål</h1>
+      </div>
+      <div class="clock" id="clock"></div>
     </header>
 
-    <div class="canvas-wrap">
-      <canvas id="scene" width="720" height="210"></canvas>
-    </div>
+    <!-- Main content -->
+    <div class="content-area">
+      <div class="main-row">
 
-    <div class="dialogue-box">
-      <div class="gem gem-tl"></div>
-      <div class="gem gem-tr"></div>
-      <div class="gem gem-bl"></div>
-      <div class="gem gem-br"></div>
-      <div class="dialogue-inner">
-        <span class="prompt-arrow">▶</span>
-        <div id="question-area">
-          <span id="question-text"></span><span class="cursor" id="cursor">_</span>
+        <!-- Left: schedule timeline (populated by JS) -->
+        <div class="schedule-panel" id="schedule-panel"></div>
+
+        <!-- Right: question card -->
+        <div class="question-card">
+          <div id="question-area">
+            <span id="question-text"></span><span class="cursor" id="cursor"></span>
+          </div>
+          <!--
+            Alfa logo — Figma asset URLs expire after 7 days (fetched 2026-06-07).
+            Replace src values with permanent hosted assets when needed.
+          -->
+          <div class="card-logo">
+            <img class="logo-icon"
+                 src="https://www.figma.com/api/mcp/asset/6be20437-758f-4b75-8648-62c2808cb48b"
+                 alt="" onerror="this.parentElement.style.display='none'">
+            <img class="logo-text"
+                 src="https://www.figma.com/api/mcp/asset/139745ea-964a-4bc9-811d-f16de840cca3"
+                 alt="alfa" onerror="this.style.display='none'">
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="reaction-wrap" id="reaction-wrap">
-      <button class="react-btn up" id="react-up">[ ▲ ]</button>
-      <span class="reaction-status" id="reaction-status"></span>
-      <button class="react-btn down" id="react-down">[ ▼ ]</button>
-    </div>
-
-    <div class="btn-wrap">
-      <button id="gen-btn">[ NYTT SPØRSMÅL ]</button>
-    </div>
-
-    <footer>POWERED BY KAFFE · ALFA SP/PW STANDUP v1.0</footer>
-
-    <div class="history-wrap">
-      <button class="history-toggle" id="history-toggle">[ TIDLIGERE ]</button>
-      <div class="history-panel" id="history-panel">
-        <div id="history-list"></div>
+      <!-- Action bar: reactions + history + generate -->
+      <div class="action-bar">
+        <div class="reaction-wrap" id="reaction-wrap">
+          <button class="react-btn up" id="react-up" title="Liker spørsmålet">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+          </button>
+          <span class="reaction-status" id="reaction-status"></span>
+          <button class="react-btn down" id="react-down" title="Liker ikke spørsmålet">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>
+          </button>
+        </div>
+        <button class="action-btn" id="history-toggle" title="Se tidligere spørsmål">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>
+        <button class="action-btn" id="gen-btn" title="Nytt spørsmål">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </button>
       </div>
+    </div>
+
+    <!-- History panel (expands below on toggle) -->
+    <div class="history-panel" id="history-panel">
+      <div id="history-list"></div>
     </div>
   </main>
 
   <script>
   /* =====================================================================
-     CANVAS — pixel art standup scene
+     CLOCK & WEEK BADGE
   ===================================================================== */
   (function () {
-    const canvas = document.getElementById('scene');
-    const ctx = canvas.getContext('2d');
-    const W = 720, H = 210;
+    const clockEl = document.getElementById('clock');
+    const badgeEl = document.getElementById('week-badge');
 
-    // Scale: 1 logical unit = P canvas pixels
-    const P = 3;
-    const FLOOR_Y = 185; // feet land here
+    function getISOWeek(d) {
+      const date = new Date(d);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + 4 - (date.getDay() || 7));
+      const yearStart = new Date(date.getFullYear(), 0, 1);
+      return Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+    }
 
-    /* ── Characters — 5 women, 5 men ── */
-    const chars = [
-      // ── Left group (facing right toward whiteboard) ──
-      // Man 1 — navy, light skin, short hair
-      { cx:  32, phase: 0.0, skin: '#f4c28a', hair: '#2d1800', shirt: '#0055aa', pants: '#1e1e50', shoes: '#1a1000', hairStyle: 'short',  facingRight: true,  blinkAt: 3200, blinking: false },
-      // Woman 1 — coral top, fair skin, long auburn hair
-      { cx:  76, phase: 0.7, skin: '#f5d0a0', hair: '#8b2c1a', shirt: '#d45080', pants: '#2a1040', shoes: '#1a1000', hairStyle: 'long',   facingRight: true,  blinkAt: 6100, blinking: false },
-      // Man 2 — forest green, medium-dark skin, short black hair
-      { cx: 120, phase: 1.4, skin: '#c9824e', hair: '#1a0e00', shirt: '#27a060', pants: '#1a3022', shoes: '#1a1000', hairStyle: 'short',  facingRight: true,  blinkAt: 1900, blinking: false },
-      // Woman 2 — lavender top, medium skin, long dark-red hair
-      { cx: 164, phase: 2.1, skin: '#d4956a', hair: '#6e1010', shirt: '#8855cc', pants: '#22103a', shoes: '#1a1000', hairStyle: 'long',   facingRight: true,  blinkAt: 4600, blinking: false },
-      // Man 3 — orange hoodie, dark skin, medium hair
-      { cx: 208, phase: 2.8, skin: '#7a4420', hair: '#1a0a00', shirt: '#cc5500', pants: '#2d1800', shoes: '#1a1000', hairStyle: 'medium', facingRight: true,  blinkAt: 7300, blinking: false },
+    function pad(n) { return String(n).padStart(2, '0'); }
 
-      // ── Right group (facing left toward whiteboard) ──
-      // Woman 3 — teal top, pale skin, long blonde hair
-      { cx: 418, phase: 3.5, skin: '#f5e4c0', hair: '#c89820', shirt: '#18a09a', pants: '#103440', shoes: '#1a1000', hairStyle: 'long',   facingRight: false, blinkAt: 2300, blinking: false },
-      // Man 4 — yellow shirt, dark skin, short hair
-      { cx: 462, phase: 4.2, skin: '#7a4420', hair: '#1a0800', shirt: '#d4a800', pants: '#2a2000', shoes: '#1a1000', hairStyle: 'short',  facingRight: false, blinkAt: 5100, blinking: false },
-      // Woman 4 — magenta top, medium skin, long dark hair
-      { cx: 506, phase: 4.9, skin: '#c9824e', hair: '#1e1228', shirt: '#cc1480', pants: '#1a0828', shoes: '#1a1000', hairStyle: 'long',   facingRight: false, blinkAt: 8600, blinking: false },
-      // Man 5 — red shirt, light skin, short brown hair
-      { cx: 550, phase: 5.6, skin: '#f4c28a', hair: '#4a2000', shirt: '#cc2020', pants: '#301010', shoes: '#1a1000', hairStyle: 'short',  facingRight: false, blinkAt: 3900, blinking: false },
-      // Woman 5 — cyan top, dark skin, long black hair
-      { cx: 594, phase: 6.3, skin: '#a0642e', hair: '#0e0808', shirt: '#00a8cc', pants: '#0a2430', shoes: '#1a1000', hairStyle: 'long',   facingRight: false, blinkAt: 6800, blinking: false },
+    function tick() {
+      const now = new Date();
+      clockEl.textContent = pad(now.getHours()) + ':' + pad(now.getMinutes());
+    }
+
+    badgeEl.textContent = 'W' + getISOWeek(new Date());
+    tick();
+    setInterval(tick, 10000);
+  })();
+
+  /* =====================================================================
+     SCHEDULE TIMELINE
+  ===================================================================== */
+  (function () {
+    const panel  = document.getElementById('schedule-panel');
+    const MONTHS = ['jan','feb','mar','apr','mai','jun','jul',
+                    'aug','sep','okt','nov','des'];
+
+    function fmt(d) { return d.getDate() + '. ' + MONTHS[d.getMonth()]; }
+
+    const today = new Date();
+    const rows = [
+      { label: 'Dagen etter', date: new Date(today.getTime() + 2 * 86400000) },
+      { label: 'I morgen',     date: new Date(today.getTime() + 1 * 86400000) },
+      { label: 'I dag',        date: today, active: true },
     ];
 
-    /* ── Steam particles ── */
-    const steam = [
-      { bx: 641, by: 147, life: 0   },
-      { bx: 644, by: 147, life: 38  },
-      { bx: 648, by: 147, life: 76  },
-    ];
-
-    /* ── Helpers ── */
-    function R(gx, gy, gw, gh) {
-      ctx.fillRect(gx, gy, gw, gh);
-    }
-
-    /* ── Draw character ── */
-    function drawChar(c, ts) {
-      const bob = Math.sin(ts / 620 + c.phase) * 2.5;
-      const fy  = FLOOR_Y + bob; // current feet Y
-      const cx  = c.cx;
-
-      // Shoes
-      ctx.fillStyle = c.shoes;
-      R(cx - 4*P, fy - 2*P, 3*P, 2*P); // left
-      R(cx + 1*P, fy - 2*P, 3*P, 2*P); // right
-
-      // Legs
-      ctx.fillStyle = c.pants;
-      R(cx - 3*P, fy - 9*P,  2*P, 7*P); // left
-      R(cx + 1*P, fy - 9*P,  2*P, 7*P); // right
-      // Hips connector
-      R(cx - 3*P, fy - 11*P, 6*P, 2*P);
-
-      // Torso
-      ctx.fillStyle = c.shirt;
-      R(cx - 4*P, fy - 19*P, 8*P, 8*P);
-
-      // Arms
-      R(cx - 6*P, fy - 18*P, 2*P, 5*P); // left arm
-      R(cx + 4*P, fy - 18*P, 2*P, 5*P); // right arm
-
-      // Hands
-      ctx.fillStyle = c.skin;
-      R(cx - 6*P, fy - 13*P, 2*P, 2*P); // left hand
-      R(cx + 4*P, fy - 13*P, 2*P, 2*P); // right hand
-
-      // Neck
-      ctx.fillStyle = c.skin;
-      R(cx - P, fy - 21*P, 2*P, 2*P);
-
-      // Head
-      ctx.fillStyle = c.skin;
-      R(cx - 3*P, fy - 27*P, 6*P, 6*P);
-
-      // Hair — top row
-      ctx.fillStyle = c.hair;
-      R(cx - 3*P, fy - 27*P, 6*P, 2*P);
-      if (c.hairStyle === 'long') {
-        R(cx - 3*P, fy - 25*P, P, 3*P); // left side
-        R(cx + 2*P, fy - 25*P, P, 3*P); // right side
-      } else if (c.hairStyle === 'medium') {
-        R(cx - 3*P, fy - 25*P, P, P);
-        R(cx + 2*P, fy - 25*P, P, P);
-      }
-
-      // Eyes
-      if (!c.blinking) {
-        ctx.fillStyle = '#110800';
-        R(cx - 2*P, fy - 24*P, P, P); // left eye
-        R(cx +  P,  fy - 24*P, P, P); // right eye
-        // Tiny catchlight
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        R(cx - 2*P + 1, fy - 24*P,     1, 1);
-        R(cx +  P  + 1, fy - 24*P,     1, 1);
-      } else {
-        // Closed eyes — thin line
-        ctx.fillStyle = '#110800';
-        R(cx - 2*P, fy - 24*P, P, 1);
-        R(cx +  P,  fy - 24*P, P, 1);
-      }
-    }
-
-    function updateBlink(c, ts) {
-      if (ts >= c.blinkAt) {
-        if (!c.blinking) {
-          c.blinking = true;
-          c.blinkAt  = ts + 130;
-        } else {
-          c.blinking = false;
-          c.blinkAt  = ts + 2800 + Math.random() * 3500;
-        }
-      }
-    }
-
-    /* ── Whiteboard ── */
-    const WB = { x: 240, y: 44, w: 150, h: 128 };
-
-    const tasks = [
-      { w: 78,  done: true  },
-      { w: 105, done: true  },
-      { w: 68,  done: false },
-      { w: 92,  done: false },
-      { w: 55,  done: false },
-      { w: 115, done: false },
-      { w: 72,  done: false },
-    ];
-
-    function drawWhiteboard(ts) {
-      const { x, y, w, h } = WB;
-
-      // Drop shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      R(x + 5, y + 5, w, h);
-
-      // Wooden frame
-      ctx.fillStyle = '#8a6e54';
-      R(x - 5, y - 5, w + 10, h + 10);
-
-      // Board surface
-      ctx.fillStyle = '#f2ede2';
-      R(x, y, w, h);
-
-      // Header band
-      ctx.fillStyle = '#3a7fa8';
-      R(x, y, w, 17);
-
-      // "STANDUP" on header
-      ctx.fillStyle = '#e8f4ff';
-      ctx.font = 'bold 8px monospace';
-      ctx.textBaseline = 'top';
-      ctx.fillText('STANDUP', x + 7, y + 5);
-
-      // Task rows
-      for (let i = 0; i < tasks.length; i++) {
-        const t = tasks[i];
-        const ty = y + 24 + i * 14;
-
-        // Bullet
-        if (t.done) {
-          ctx.fillStyle = '#22aa55';
-          R(x + 6, ty + 1, 4, 4);
-          // Line (done)
-          ctx.fillStyle = '#a8c8a0';
-          R(x + 14, ty + 1, t.w, 5);
-          // Strikethrough
-          ctx.fillStyle = 'rgba(0,80,0,0.35)';
-          R(x + 14, ty + 3, t.w, 1);
-        } else {
-          ctx.fillStyle = '#aaa090';
-          R(x + 6, ty + 1, 4, 4);
-          ctx.fillStyle = '#7a8faa';
-          R(x + 14, ty + 1, t.w, 5);
-        }
-      }
-
-      // Blinking marker cursor at bottom
-      if (Math.floor(ts / 650) % 2 === 0) {
-        ctx.fillStyle = '#e85500';
-        R(x + 7, y + h - 12, 8, 4);
-      }
-    }
-
-    /* ── Coffee mug ── */
-    function drawCoffee(ts) {
-      const mx = 645, my = 165;
-
-      // Small side-table
-      ctx.fillStyle = '#2e1e0e';
-      R(mx - 14, my,      28, 5);
-      R(mx - 10, my + 5,  8,  20);
-      R(mx + 2,  my + 5,  8,  20);
-
-      // Mug body
-      ctx.fillStyle = '#c43a22';
-      R(mx - 8, my - 16, 16, 16);
-      // Mug highlight stripe
-      ctx.fillStyle = '#e05840';
-      R(mx - 7, my - 15,  5, 14);
-      // Handle
-      ctx.fillStyle = '#c43a22';
-      R(mx + 8,  my - 14, 3, 2); // top
-      R(mx + 10, my - 14, 2, 8); // right side
-      R(mx + 8,  my - 6,  3, 2); // bottom
-      // Coffee inside
-      ctx.fillStyle = '#1e0e00';
-      R(mx - 7, my - 15, 14, 4);
-      // Cream swirl (static)
-      ctx.fillStyle = '#c8a070';
-      R(mx - 2, my - 14, 4, 2);
-
-      // Steam particles
-      for (const sp of steam) {
-        const norm = (sp.life % 100) / 100;
-        const alpha = Math.max(0, 0.65 * (1 - norm * 1.4));
-        const rise = norm * 28;
-        const wiggle = Math.sin(sp.life * 0.22) * 2.5;
-        ctx.fillStyle = `rgba(190, 190, 230, ${alpha.toFixed(2)})`;
-        R(Math.round(sp.bx + wiggle), Math.round(sp.by - rise), 2, 3);
-      }
-    }
-
-    function updateSteam() {
-      for (const sp of steam) {
-        sp.life = (sp.life + 0.55) % 100;
-      }
-    }
-
-    /* ── Background ── */
-    function drawBackground() {
-      // Dark room
-      ctx.fillStyle = '#09091a';
-      R(0, 0, W, H);
-
-      // Wall (upper portion)
-      const wallGrad = ctx.createLinearGradient(0, 0, 0, 150);
-      wallGrad.addColorStop(0, '#0c0c20');
-      wallGrad.addColorStop(1, '#0f0f24');
-      ctx.fillStyle = wallGrad;
-      R(0, 0, W, 150);
-
-      // Floor
-      ctx.fillStyle = '#10101e';
-      R(0, 150, W, H - 150);
-
-      // Floor/wall edge
-      ctx.fillStyle = '#22224a';
-      R(0, 149, W, 2);
-
-      // Subtle floor grid
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.028)';
-      for (let gx = 0; gx < W; gx += 30) R(gx, 151, 1, H - 151);
-      for (let gy = 151; gy < H; gy += 15) R(0, gy, W, 1);
-
-      // Ambient glow around whiteboard
-      const glow = ctx.createRadialGradient(315, 108, 20, 315, 108, 200);
-      glow.addColorStop(0, 'rgba(80, 180, 255, 0.045)');
-      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = glow;
-      R(0, 0, W, H);
-
-      // Neon accent strip on ceiling
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.06)';
-      R(0, 0, W, 2);
-      ctx.fillStyle = 'rgba(255, 0, 200, 0.04)';
-      R(0, 3, W, 1);
-    }
-
-    /* ── Main render loop ── */
-    function render(ts) {
-      ctx.clearRect(0, 0, W, H);
-
-      drawBackground();
-      drawWhiteboard(ts);
-      updateSteam();
-      drawCoffee(ts);
-
-      for (const c of chars) {
-        updateBlink(c, ts);
-        drawChar(c, ts);
-      }
-
-      requestAnimationFrame(render);
-    }
-
-    requestAnimationFrame(render);
+    panel.innerHTML = rows.map(r => `
+      <div class="schedule-row${r.active ? ' active' : ''}">
+        <div class="schedule-left">
+          <div class="schedule-label">${r.label}</div>
+          <div class="schedule-connector"></div>
+        </div>
+        <div class="schedule-detail">${fmt(r.date)}</div>
+      </div>`).join('');
   })();
 
   /* =====================================================================
@@ -753,8 +568,8 @@
         });
         const data = await res.json();
         if (data.ok) {
-          reactionStatus.textContent = reaction === 'up' ? '[ takk! ]' : '[ notert! ]';
-          reactionStatus.style.color = reaction === 'up' ? 'var(--green)' : 'var(--magenta)';
+          reactionStatus.textContent = reaction === 'up' ? 'Nice!' : 'Notert!';
+          reactionStatus.style.color = reaction === 'up' ? '#39d353' : '#ff6677';
         }
       } catch {
         hasReacted = false;
@@ -767,8 +582,8 @@
     reactUp.addEventListener('click',   () => sendReaction('up'));
     reactDown.addEventListener('click', () => sendReaction('down'));
 
-    let twTimer      = null;
-    let twCancelled  = false;
+    let twTimer     = null;
+    let twCancelled = false;
 
     function cancelTypewriter() {
       twCancelled = true;
@@ -813,7 +628,7 @@
       'Hvis du kunne lagt til en ekstra «0» ett sted i livet ditt, hvor ville du lagt den?',
       'Hva er en morsom eller skummel ting som har skjedd deg på en reise?',
       'Hvis du måtte spist én rett resten av livet, hva ville det vært?',
-      'Hvilken superkraft ville vært mest nyttig i et standup-møte?',
+      'Hva er den rare vanen du har som du aldri har fortalt noen om?',
       'Hvis kontoret hadde en hemmelig dør – hvor ville du at den skulle føre?',
     ];
     let sampleIdx = 0;
@@ -821,11 +636,10 @@
     async function generateQuestion() {
       showLoading();
 
-      // Local file preview: skip the server, use a rotating sample question
       if (window.location.protocol === 'file:') {
         await new Promise(r => setTimeout(r, 700));
         const q = SAMPLE_QUESTIONS[sampleIdx++ % SAMPLE_QUESTIONS.length];
-        typewriter(q, () => { genBtn.disabled = false; launchConfetti(); });
+        typewriter(q, () => { genBtn.disabled = false; launchConfetti(); showReactions(q); });
         return;
       }
 
@@ -853,9 +667,9 @@
      CONFETTI
   ===================================================================== */
   (function () {
-    const COLORS = ['#00e5ff', '#ff00c8', '#ffb300', '#39d353', '#ffffff', '#ff6b6b'];
-    const PIXEL  = 5; // each confetti square is 5×5 px (pixel art feel)
-    const COUNT  = 60;
+    const COLORS = ['#d92735','#ffffff','#ff8fa3','#a8d8ff','#39d353','#ffd166'];
+    const PIXEL  = 6;
+    const COUNT  = 65;
 
     let canvas, ctx, particles = [], rafId = null;
 
@@ -880,15 +694,15 @@
         const angle = Math.random() * Math.PI * 2;
         const speed = 3 + Math.random() * 6;
         particles.push({
-          x:    cx + (Math.random() - 0.5) * 120,
-          y:    canvas.height * 0.55,    // burst from around the dialogue box
+          x:    cx + (Math.random() - 0.5) * 200,
+          y:    canvas.height * 0.5,
           vx:   Math.cos(angle) * speed,
-          vy:   -(4 + Math.random() * 6), // always shoots upward first
+          vy:   -(4 + Math.random() * 6),
           rot:  Math.random() * 360,
-          rotV: (Math.random() - 0.5) * 12,
+          rotV: (Math.random() - 0.5) * 10,
           color: COLORS[Math.floor(Math.random() * COLORS.length)],
           life:  1.0,
-          decay: 0.012 + Math.random() * 0.01,
+          decay: 0.011 + Math.random() * 0.009,
         });
       }
     }
@@ -896,16 +710,14 @@
     function animate() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       let alive = false;
-
       for (const p of particles) {
-        p.vy  += 0.25;           // gravity
+        p.vy  += 0.25;
         p.x   += p.vx;
         p.y   += p.vy;
         p.rot += p.rotV;
         p.life -= p.decay;
         if (p.life <= 0) continue;
         alive = true;
-
         ctx.save();
         ctx.globalAlpha = p.life;
         ctx.translate(p.x, p.y);
@@ -914,7 +726,6 @@
         ctx.fillRect(-PIXEL / 2, -PIXEL / 2, PIXEL, PIXEL);
         ctx.restore();
       }
-
       if (alive) {
         rafId = requestAnimationFrame(animate);
       } else {
@@ -947,15 +758,16 @@
     function formatDate(isoDate) {
       const [y, m, d] = isoDate.split('-').map(Number);
       const date = new Date(y, m - 1, d);
-      return `${DAYS[date.getDay()]}, ${d}. ${MONTHS[m - 1]} ${y}`;
+      return DAYS[date.getDay()] + ', ' + d + '. ' + MONTHS[m - 1] + ' ' + y;
     }
 
     function escapeHtml(str) {
-      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
     async function loadHistory() {
-      list.innerHTML = '<p class="history-empty"><span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></p>';
+      list.innerHTML = '<p class="history-empty"><span class="loading-dots">' +
+        '<span>.</span><span>.</span><span>.</span></span></p>';
 
       if (window.location.protocol === 'file:') {
         list.innerHTML = '<p class="history-empty">Historikk ikke tilgjengelig i lokal forhåndsvisning.</p>';
@@ -973,8 +785,7 @@
           <div class="history-entry">
             <span class="history-date">${formatDate(q.isoDate)}</span>
             <span class="history-question">${escapeHtml(q.question)}</span>
-          </div>
-        `).join('');
+          </div>`).join('');
         loaded = true;
       } catch {
         list.innerHTML = '<p class="history-empty">Kunne ikke laste historikk.</p>';
@@ -984,7 +795,7 @@
     toggle.addEventListener('click', async () => {
       const opening = !panel.classList.contains('is-open');
       panel.classList.toggle('is-open', opening);
-      toggle.textContent = opening ? '[ TIDLIGERE ▴ ]' : '[ TIDLIGERE ]';
+      toggle.title = opening ? 'Skjul historikk' : 'Se tidligere spørsmål';
       if (opening && !loaded) await loadHistory();
     });
 
