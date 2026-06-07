@@ -1,21 +1,102 @@
 const https = require('https');
 const { kv } = require('@vercel/kv');
 
-const BASE_SYSTEM_PROMPT = `Du er en kreativ assistent som genererer engasjerende sjekk-inn-spørsmål for daglige standup-møter i et profesjonelt team.
+/* ── Categories ── */
+const CATEGORIES = [
+  'Fortid & minner',
+  'Mat & sanser',
+  'Reise & steder',
+  'Penger & prioriteringer',
+  'Teknologi & fremtid',
+  'Relasjoner & sosiale situasjoner',
+  'Arbeid & kreativitet',
+  'Natur & dyr',
+  'Hverdagsliv & vaner',
+  'Hypotetiske valg',
+];
 
-Generer ETT spørsmål. Roter mellom disse kategoriene i rekkefølge, og velg én tilfeldig underkategori:
+const CATEGORY_HINTS = {
+  'Fortid & minner': 'barndomsminner, pinlige øyeblikk, stolteste øyeblikk, ting du angrer på, første gang du ..., noe du mistet, noe du fant igjen',
+  'Mat & sanser': 'smaker, lukter, matritualene, restaurantopplevelser, maten du skammer deg over å elske, det rareste du har spist',
+  'Reise & steder': 'drømmemål, verste reise, overraskende favorittsted, steder du aldri vil tilbake til, steder du glemte å ta bilde av',
+  'Penger & prioriteringer': 'hva ville du brukt en uventet million på, hva er verdt å bruke mye på, hva fikser du aldri selv, det kjøpet du aldri angret på',
+  'Teknologi & fremtid': 'hva gleder deg ved fremtiden, hva skremmer deg, hvilken teknologi savner du ikke, hva gjør du fremdeles analogt',
+  'Relasjoner & sosiale situasjoner': 'hvem har lært deg mest, hvem overrasket deg positivt, hva noen sa som festet seg, den pinligste sosiale situasjonen du overlevde',
+  'Arbeid & kreativitet': 'hva er du uventet god på, hva ville du gjort annerledes, hva i jobben forventer folk at du misliker men du elsker, det du lager bare for deg selv',
+  'Natur & dyr': 'favorittårstid og hvorfor, hvilket dyr beskriver deg akkurat nå, det rareste du har sett i naturen, naturstedet du alltid vender tilbake til',
+  'Hverdagsliv & vaner': 'morgenrutiner, guilty pleasures, rare vaner, hva du gjør annerledes enn de fleste, vanen du ga opp og savner',
+  'Hypotetiske valg': 'vanskelige enten/eller-valg, hva hadde du valgt med 24 timer fri og ubegrensede midler, hva hadde du studert på nytt',
+};
 
-KATEGORIER (velg én, veksle bredt):
-- Fortid & minner: barndomsminner, pinlige øyeblikk, stolteste øyeblikk, ting du angrer på
-- Mat & sanser: smaker, lukter, ritualer, restaurantopplevelser
-- Reise & steder: drømmemål, verste reise, overraskende favorittsted
-- Penger & prioriteringer: hva ville du brukt en uventet million på, hva er verdt å bruke mye på
-- Teknologi & fremtid: hva gleder/skremmer deg ved fremtiden, hvilken teknologi savner du ikke
-- Relasjoner & sosiale situasjoner: hvem ville du invitert til middag, hvem har lært deg mest
-- Arbeid & kreativitet: drømmejobb, hva ville du gjort annerledes, hva er du uventet god på
-- Natur & dyr: favorittårstid og hvorfor, hvilket dyr beskriver deg i dag
-- Hverdagsliv & vaner: morgenrutiner, guilty pleasures, rare vaner
-- Hypotetiske valg: vanskelige enten/eller-valg uten superkrefter
+/* ── KV helpers ── */
+async function getCurrentCategory() {
+  try {
+    const idx = (await kv.get('checkin:category_index')) ?? 0;
+    await kv.set('checkin:category_index', (Number(idx) + 1) % CATEGORIES.length);
+    return CATEGORIES[Number(idx) % CATEGORIES.length];
+  } catch {
+    return CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+  }
+}
+
+async function getRecentQuestions() {
+  try {
+    return await kv.lrange('checkin:questions', 0, 29);
+  } catch {
+    return [];
+  }
+}
+
+async function saveQuestion(question, category) {
+  try {
+    await kv.lpush('checkin:questions', {
+      question,
+      category,
+      isoDate: new Date().toISOString().slice(0, 10),
+      timestamp: Date.now(),
+    });
+    await kv.ltrim('checkin:questions', 0, 89);
+  } catch {}
+}
+
+async function getReactions() {
+  try {
+    const [up, down] = await Promise.all([
+      kv.hgetall('checkin:reactions:up'),
+      kv.hgetall('checkin:reactions:down'),
+    ]);
+    return { up: up || {}, down: down || {} };
+  } catch {
+    return { up: {}, down: {} };
+  }
+}
+
+/* ── System prompt ── */
+function buildSystemPrompt(recentQuestions, category, reactions) {
+  const { up, down } = reactions || { up: {}, down: {} };
+  const dayOfWeek = new Date().toLocaleDateString('nb-NO', { weekday: 'long' });
+  const dayHint = dayOfWeek === 'mandag'
+    ? '\nDAGENS DAG er mandag – jobb gjerne mot fremover-energi og ny-uke-stemning.'
+    : dayOfWeek === 'fredag'
+    ? '\nDAGENS DAG er fredag – jobb gjerne mot refleksjon, avslutning og takknemlighet.'
+    : '';
+
+  let prompt = `Du er en kreativ assistent som genererer engasjerende sjekk-inn-spørsmål for daglige standup-møter i et profesjonelt team.${dayHint}
+
+Generer ETT spørsmål fra kategorien: **${category}**
+Mulige vinkler: ${CATEGORY_HINTS[category]}
+
+Velg en UVENTET vinkel – ikke det første som faller deg inn. Unngå åpenbare og generiske varianter.
+
+Eksempel på DÅRLIGE spørsmål (for generiske – IKKE lag disse):
+- "Hvem ville du invitert til middag?"
+- "Hva er drømmejobben din?"
+- "Hvilken reise husker du best?"
+
+Eksempel på GODE spørsmål (konkrete, overraskende, litt uventede):
+- "Hva er det siste du lærte deg som ikke var nyttig i det hele tatt, men som du er glad for å vite?"
+- "Hvilken matvare tok det deg lengst tid å like – og hva fikk deg til å snu?"
+- "Hva er den rare vanen du har som du aldri har fortalt noen om?"
 
 STRENGE FORBUD – aldri generer spørsmål om:
 - Superkrefter eller magiske evner
@@ -32,31 +113,41 @@ Spørsmålet skal være:
 
 Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen hermetegn.`;
 
-function buildSystemPrompt(recentQuestions) {
-  if (!recentQuestions || recentQuestions.length === 0) return BASE_SYSTEM_PROMPT;
-  const list = recentQuestions.slice(0, 20).map(q => `- ${q.question}`).join('\n');
-  return `${BASE_SYSTEM_PROMPT}\n\nTidligere stilte spørsmål – unngå å gjenta disse temaene eller stille lignende spørsmål:\n${list}`;
-}
+  const liked = recentQuestions
+    .filter(q => (Number(up[q.question]) || 0) >= 1)
+    .sort((a, b) => (Number(up[b.question]) || 0) - (Number(up[a.question]) || 0))
+    .slice(0, 5);
 
-async function getRecentQuestions() {
-  try {
-    return await kv.lrange('checkin:questions', 0, 19);
-  } catch {
-    return [];
+  const disliked = recentQuestions
+    .filter(q => (Number(down[q.question]) || 0) >= 1)
+    .sort((a, b) => (Number(down[b.question]) || 0) - (Number(down[a.question]) || 0))
+    .slice(0, 5);
+
+  if (liked.length > 0) {
+    const list = liked.map(q => `- ${q.question}`).join('\n');
+    prompt += `\n\nSpørsmål teamet likte godt – lag lignende (men ikke repeter):\n${list}`;
   }
+
+  if (disliked.length > 0) {
+    const list = disliked.map(q => `- ${q.question}`).join('\n');
+    prompt += `\n\nSpørsmål teamet ikke likte – unngå disse typene:\n${list}`;
+  }
+
+  const categoryRecent = recentQuestions.filter(q => q.category === category);
+  if (categoryRecent.length > 0) {
+    const list = categoryRecent.slice(0, 10).map(q => `- ${q.question}`).join('\n');
+    prompt += `\n\nTidligere spørsmål fra denne kategorien – velg en helt annen vinkel:\n${list}`;
+  }
+
+  if (recentQuestions.length > 0) {
+    const list = recentQuestions.slice(0, 30).map(q => `- ${q.question}`).join('\n');
+    prompt += `\n\nAlle nylige spørsmål – ikke gjenta temaer:\n${list}`;
+  }
+
+  return prompt;
 }
 
-async function saveQuestion(question) {
-  try {
-    await kv.lpush('checkin:questions', {
-      question,
-      isoDate: new Date().toISOString().slice(0, 10),
-      timestamp: Date.now(),
-    });
-    await kv.ltrim('checkin:questions', 0, 89);
-  } catch {}
-}
-
+/* ── Handler ── */
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -69,8 +160,12 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const recentQuestions = await getRecentQuestions();
-  const systemPrompt = buildSystemPrompt(recentQuestions);
+  const [category, recentQuestions, reactions] = await Promise.all([
+    getCurrentCategory(),
+    getRecentQuestions(),
+    getReactions(),
+  ]);
+  const systemPrompt = buildSystemPrompt(recentQuestions, category, reactions);
 
   const body = JSON.stringify({
     model: 'claude-sonnet-4-20250514',
@@ -81,7 +176,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const question = await callWithRetry(API_KEY, body);
-    await saveQuestion(question);
+    await saveQuestion(question, category);
     res.status(200).json({ question });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Noe gikk galt.' });

@@ -307,6 +307,51 @@
       margin: 0;
     }
 
+    /* ── Reactions ── */
+    .reaction-wrap {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      width: 100%;
+    }
+    .reaction-wrap.is-visible { display: flex; }
+
+    .react-btn {
+      font-size: 8px;
+      padding: 8px 14px;
+    }
+    .react-btn.up {
+      color: var(--green);
+      border-color: var(--green);
+      box-shadow: 3px 3px 0 #1a5e20, 0 0 14px rgba(57, 211, 83, 0.08);
+    }
+    .react-btn.down {
+      color: var(--magenta);
+      border-color: var(--magenta);
+      box-shadow: 3px 3px 0 #6b006b, 0 0 14px rgba(255, 0, 200, 0.08);
+    }
+    .react-btn.up:hover:not(:disabled) {
+      color: #6bff8a;
+      border-color: #6bff8a;
+      box-shadow: 5px 5px 0 #1a5e20, 0 0 24px rgba(57, 211, 83, 0.2);
+    }
+    .react-btn.down:hover:not(:disabled) {
+      color: #ff55e0;
+      border-color: #ff55e0;
+      box-shadow: 5px 5px 0 #6b006b, 0 0 24px rgba(255, 0, 200, 0.2);
+    }
+    .react-btn.up:active:not(:disabled)   { box-shadow: 1px 1px 0 #1a5e20; }
+    .react-btn.down:active:not(:disabled)  { box-shadow: 1px 1px 0 #6b006b; }
+
+    .reaction-status {
+      font-size: 6px;
+      color: var(--dim);
+      letter-spacing: 1px;
+      min-width: 60px;
+      text-align: center;
+    }
+
     /* ── Responsive ── */
     @media (max-width: 480px) {
       body { padding: 20px 12px 36px; gap: 20px; }
@@ -340,6 +385,12 @@
           <span id="question-text"></span><span class="cursor" id="cursor">_</span>
         </div>
       </div>
+    </div>
+
+    <div class="reaction-wrap" id="reaction-wrap">
+      <button class="react-btn up" id="react-up">[ ▲ ]</button>
+      <span class="reaction-status" id="reaction-status"></span>
+      <button class="react-btn down" id="react-down">[ ▼ ]</button>
     </div>
 
     <div class="btn-wrap">
@@ -664,9 +715,57 @@
      QUESTION GENERATION
   ===================================================================== */
   (function () {
-    const questionText = document.getElementById('question-text');
-    const cursor       = document.getElementById('cursor');
-    const genBtn       = document.getElementById('gen-btn');
+    const questionText   = document.getElementById('question-text');
+    const cursor         = document.getElementById('cursor');
+    const genBtn         = document.getElementById('gen-btn');
+    const reactionWrap   = document.getElementById('reaction-wrap');
+    const reactUp        = document.getElementById('react-up');
+    const reactDown      = document.getElementById('react-down');
+    const reactionStatus = document.getElementById('reaction-status');
+    let currentQuestion = null;
+    let hasReacted = false;
+
+    function showReactions(question) {
+      currentQuestion = question;
+      hasReacted = false;
+      reactUp.disabled = false;
+      reactDown.disabled = false;
+      reactionStatus.textContent = '';
+      reactionStatus.style.color = '';
+      reactionWrap.classList.add('is-visible');
+    }
+
+    function hideReactions() {
+      reactionWrap.classList.remove('is-visible');
+    }
+
+    async function sendReaction(reaction) {
+      if (hasReacted || !currentQuestion || window.location.protocol === 'file:') return;
+      hasReacted = true;
+      reactUp.disabled = true;
+      reactDown.disabled = true;
+      reactionStatus.textContent = '...';
+      try {
+        const res = await fetch('/react', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: currentQuestion, reaction }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          reactionStatus.textContent = reaction === 'up' ? '[ takk! ]' : '[ notert! ]';
+          reactionStatus.style.color = reaction === 'up' ? 'var(--green)' : 'var(--magenta)';
+        }
+      } catch {
+        hasReacted = false;
+        reactUp.disabled = false;
+        reactDown.disabled = false;
+        reactionStatus.textContent = '';
+      }
+    }
+
+    reactUp.addEventListener('click',   () => sendReaction('up'));
+    reactDown.addEventListener('click', () => sendReaction('down'));
 
     let twTimer      = null;
     let twCancelled  = false;
@@ -696,6 +795,7 @@
 
     function showLoading() {
       cancelTypewriter();
+      hideReactions();
       cursor.classList.add('cursor-hidden');
       questionText.innerHTML =
         '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>';
@@ -739,7 +839,7 @@
         }
         const { question } = await res.json();
         window.dispatchEvent(new CustomEvent('questionGenerated'));
-        typewriter(question, () => { genBtn.disabled = false; launchConfetti(); });
+        typewriter(question, () => { genBtn.disabled = false; launchConfetti(); showReactions(question); });
       } catch (_) {
         showError('Kunne ikke nå serveren. Er den startet?');
       }

@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/generate", "destination": "/api/generate" },
-    { "source": "/history",  "destination": "/api/history"  }
+    { "source": "/history",  "destination": "/api/history"  },
+    { "source": "/react",    "destination": "/api/react"    }
   ]
 }
