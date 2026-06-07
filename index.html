@@ -273,8 +273,32 @@
     .action-bar {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 16px;
     }
+
+    /* Source toggle: AI ⇄ Person — small segmented pill */
+    .mode-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      background: rgba(31, 35, 60, 0.85);
+      border-radius: 14px;
+      padding: 3px;
+      margin-right: 4px;
+    }
+    .mode-opt {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 42px;
+      border-radius: 11px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.42);
+    }
+    .mode-opt:hover:not(.is-active) { color: #fff; }
+    .mode-opt.is-active { background: rgba(46, 52, 88, 1); color: #fff; }
+    .mode-opt:active:not(.is-active) { transform: scale(0.95); }
 
     /* Shared button reset */
     button {
@@ -304,7 +328,7 @@
     .reaction-wrap {
       display: none;
       align-items: center;
-      gap: 8px;
+      gap: 4px;
     }
     .reaction-wrap.is-visible { display: flex; }
 
@@ -445,8 +469,9 @@
         </div>
       </div>
 
-      <!-- Action bar: reactions + history + generate -->
+      <!-- Action bar: source toggle + reactions + history + generate -->
       <div class="action-bar">
+        <!-- Source toggle: AI question vs. question from the team's Google Sheet -->
         <div class="reaction-wrap" id="reaction-wrap">
           <button class="react-btn up" id="react-up" title="Liker spørsmålet">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>
@@ -454,6 +479,14 @@
           <span class="reaction-status" id="reaction-status"></span>
           <button class="react-btn down" id="react-down" title="Liker ikke spørsmålet">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>
+          </button>
+        </div>
+        <div class="mode-toggle" id="mode-toggle" role="group" aria-label="Velg spørsmålskilde">
+          <button class="mode-opt is-active" data-mode="ai" id="mode-ai" title="La AI lage spørsmålet">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></svg>
+          </button>
+          <button class="mode-opt" data-mode="person" id="mode-person" title="Hent et spørsmål fra teamet">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </button>
         </div>
         <button class="action-btn" id="history-toggle" title="Se tidligere spørsmål">
@@ -539,6 +572,18 @@
     const reactionStatus = document.getElementById('reaction-status');
     let currentQuestion = null;
     let hasReacted = false;
+
+    /* ── "Ask a person" mode: questions from a Google Sheet ──
+       Publish the sheet (File ▸ Share ▸ Publish to web ▸ CSV) OR share it as
+       "anyone with the link can view", then paste a CSV export URL below.
+       Put one question per row in the first column. A header row named
+       "Spørsmål"/"Question" is ignored. Leave empty to disable the mode. */
+    const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTgGowAlTXwt_zyahniYioeamIpKm2hMzGfdQkM7djJn1dv4quMlAXz3I-3ShQ58juoqIyAB128oxvh/pub?output=csv';
+    const modeToggle = document.getElementById('mode-toggle');
+    const modeAiBtn  = document.getElementById('mode-ai');
+    const modePerson = document.getElementById('mode-person');
+    let mode = 'ai';            // 'ai' | 'person'
+    let lastPersonQuestion = null;
 
     function showReactions(question) {
       currentQuestion = question;
@@ -633,8 +678,82 @@
     ];
     let sampleIdx = 0;
 
+    /* ── Google Sheet fetching ── */
+    function parseCSV(text) {
+      const rows = [];
+      let row = [], field = '', inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (inQuotes) {
+          if (c === '"') {
+            if (text[i + 1] === '"') { field += '"'; i++; }
+            else inQuotes = false;
+          } else field += c;
+        } else if (c === '"') {
+          inQuotes = true;
+        } else if (c === ',') {
+          row.push(field); field = '';
+        } else if (c === '\n') {
+          row.push(field); rows.push(row); row = []; field = '';
+        } else if (c !== '\r') {
+          field += c;
+        }
+      }
+      if (field.length || row.length) { row.push(field); rows.push(row); }
+      return rows;
+    }
+
+    function extractQuestions(text) {
+      const out = [];
+      for (const row of parseCSV(text)) {
+        const cell = (row[0] || '').trim();
+        if (!cell) continue;
+        if (/^(spørsmål|sporsmal|question|sjekk.?inn)$/i.test(cell)) continue; // header
+        out.push(cell);
+      }
+      return out;
+    }
+
+    async function fetchSheetQuestions() {
+      const res = await fetch(SHEET_CSV_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('sheet fetch failed');
+      return extractQuestions(await res.text());
+    }
+
+    function pickPersonQuestion(list) {
+      if (list.length === 1) return list[0];
+      let q;
+      do { q = list[Math.floor(Math.random() * list.length)]; }
+      while (q === lastPersonQuestion);
+      lastPersonQuestion = q;
+      return q;
+    }
+
+    async function generateFromSheet() {
+      if (!SHEET_CSV_URL) {
+        showError('Legg inn lenken til Google-arket for å bruke denne modusen.');
+        return;
+      }
+      try {
+        const questions = await fetchSheetQuestions();
+        if (!questions.length) {
+          showError('Ingen spørsmål i arket ennå. Legg til noen og prøv igjen.');
+          return;
+        }
+        const q = pickPersonQuestion(questions);
+        typewriter(q, () => { genBtn.disabled = false; launchConfetti(); });
+      } catch (_) {
+        showError('Kunne ikke hente spørsmål fra arket. Sjekk at det er delt offentlig.');
+      }
+    }
+
     async function generateQuestion() {
       showLoading();
+
+      if (mode === 'person') {
+        await generateFromSheet();
+        return;
+      }
 
       if (window.location.protocol === 'file:') {
         await new Promise(r => setTimeout(r, 700));
@@ -658,6 +777,20 @@
         showError('Kunne ikke nå serveren. Er den startet?');
       }
     }
+
+    function setMode(next) {
+      if (next === mode) return;
+      mode = next;
+      modeAiBtn.classList.toggle('is-active', mode === 'ai');
+      modePerson.classList.toggle('is-active', mode === 'person');
+      hideReactions();          // reactions only apply to AI questions
+      generateQuestion();       // fetch a fresh question from the new source
+    }
+
+    modeToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mode-opt');
+      if (btn) setMode(btn.dataset.mode);
+    });
 
     genBtn.addEventListener('click', generateQuestion);
     generateQuestion();
