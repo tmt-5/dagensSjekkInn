@@ -12,6 +12,24 @@ try {
   kv = require('@vercel/kv').kv;
 } catch {}
 
+/* ── Storage backend ──
+   Production uses Vercel KV. When KV isn't configured (local dev), fall back to
+   a small JSON file on disk so history & reactions still work locally. */
+const useKv = !!(kv && process.env.KV_REST_API_URL);
+const DATA_FILE = path.join(__dirname, '.checkin-data.json');
+
+function readLocal() {
+  try {
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch {
+    return { questions: [], reactions: { up: {}, down: {} }, categoryIndex: 0 };
+  }
+}
+
+function writeLocal(data) {
+  try { fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2)); } catch {}
+}
+
 /* ── Categories ── */
 const CATEGORIES = [
   'Fortid & minner',
@@ -41,8 +59,12 @@ const CATEGORY_HINTS = {
 
 /* ── KV helpers ── */
 async function getCurrentCategory() {
-  if (!kv || !process.env.KV_REST_API_URL) {
-    return CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+  if (!useKv) {
+    const data = readLocal();
+    const idx = Number(data.categoryIndex) || 0;
+    data.categoryIndex = (idx + 1) % CATEGORIES.length;
+    writeLocal(data);
+    return CATEGORIES[idx % CATEGORIES.length];
   }
   try {
     const idx = (await kv.get('checkin:category_index')) ?? 0;
@@ -54,7 +76,7 @@ async function getCurrentCategory() {
 }
 
 async function getRecentQuestions() {
-  if (!kv || !process.env.KV_REST_API_URL) return [];
+  if (!useKv) return readLocal().questions.slice(0, 30);
   try {
     return await kv.lrange('checkin:questions', 0, 29);
   } catch {
@@ -63,20 +85,27 @@ async function getRecentQuestions() {
 }
 
 async function saveQuestion(question, category) {
-  if (!kv || !process.env.KV_REST_API_URL) return;
+  const entry = {
+    question,
+    category,
+    isoDate: new Date().toISOString().slice(0, 10),
+    timestamp: Date.now(),
+  };
+  if (!useKv) {
+    const data = readLocal();
+    data.questions.unshift(entry);
+    data.questions = data.questions.slice(0, 90);
+    writeLocal(data);
+    return;
+  }
   try {
-    await kv.lpush('checkin:questions', {
-      question,
-      category,
-      isoDate: new Date().toISOString().slice(0, 10),
-      timestamp: Date.now(),
-    });
+    await kv.lpush('checkin:questions', entry);
     await kv.ltrim('checkin:questions', 0, 89);
   } catch {}
 }
 
 async function getAllQuestions() {
-  if (!kv || !process.env.KV_REST_API_URL) return [];
+  if (!useKv) return readLocal().questions;
   try {
     return await kv.lrange('checkin:questions', 0, -1);
   } catch {
@@ -85,7 +114,10 @@ async function getAllQuestions() {
 }
 
 async function getReactions() {
-  if (!kv || !process.env.KV_REST_API_URL) return { up: {}, down: {} };
+  if (!useKv) {
+    const r = readLocal().reactions || { up: {}, down: {} };
+    return { up: r.up || {}, down: r.down || {} };
+  }
   try {
     const [up, down] = await Promise.all([
       kv.hgetall('checkin:reactions:up'),
@@ -98,7 +130,17 @@ async function getReactions() {
 }
 
 async function saveReaction(question, reaction) {
-  if (!kv || !process.env.KV_REST_API_URL) return { upvotes: 0, downvotes: 0 };
+  if (!useKv) {
+    const data = readLocal();
+    data.reactions = data.reactions || { up: {}, down: {} };
+    const bucket = reaction === 'up' ? data.reactions.up : data.reactions.down;
+    bucket[question] = (Number(bucket[question]) || 0) + 1;
+    writeLocal(data);
+    return {
+      upvotes: Number(data.reactions.up[question]) || 0,
+      downvotes: Number(data.reactions.down[question]) || 0,
+    };
+  }
   try {
     const key = reaction === 'up' ? 'checkin:reactions:up' : 'checkin:reactions:down';
     await kv.hincrby(key, question, 1);
@@ -310,5 +352,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`\n  ▶ Dagens Sjekk-inn kjører på http://localhost:${PORT}\n`);
   if (!API_KEY) console.warn('  ⚠  ADVARSEL: ANTHROPIC_API_KEY er ikke satt!\n');
-  if (!process.env.KV_REST_API_URL) console.warn('  ⚠  KV_REST_API_URL ikke satt – historikk deaktivert lokalt.\n');
+  if (!useKv) console.warn(`  ⚠  KV_REST_API_URL ikke satt – bruker lokal fil (${path.basename(DATA_FILE)}) for historikk.\n`);
 });
