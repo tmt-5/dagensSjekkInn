@@ -16,16 +16,16 @@ const CATEGORIES = [
 ];
 
 const CATEGORY_HINTS = {
-  'Fortid & minner': 'barndomsminner, pinlige øyeblikk, stolteste øyeblikk, ting du angrer på, første gang du ..., noe du mistet, noe du fant igjen',
-  'Mat & sanser': 'smaker, lukter, matritualene, restaurantopplevelser, maten du skammer deg over å elske, det rareste du har spist',
-  'Reise & steder': 'drømmemål, verste reise, overraskende favorittsted, steder du aldri vil tilbake til, steder du glemte å ta bilde av',
-  'Penger & prioriteringer': 'hva ville du brukt en uventet million på, hva er verdt å bruke mye på, hva fikser du aldri selv, det kjøpet du aldri angret på',
-  'Teknologi & fremtid': 'hva gleder deg ved fremtiden, hva skremmer deg, hvilken teknologi savner du ikke, hva gjør du fremdeles analogt',
-  'Relasjoner & sosiale situasjoner': 'hvem har lært deg mest, hvem overrasket deg positivt, hva noen sa som festet seg, den pinligste sosiale situasjonen du overlevde',
-  'Arbeid & kreativitet': 'hva er du uventet god på, hva ville du gjort annerledes, hva i jobben forventer folk at du misliker men du elsker, det du lager bare for deg selv',
-  'Natur & dyr': 'favorittårstid og hvorfor, hvilket dyr beskriver deg akkurat nå, det rareste du har sett i naturen, naturstedet du alltid vender tilbake til',
-  'Hverdagsliv & vaner': 'morgenrutiner, guilty pleasures, rare vaner, hva du gjør annerledes enn de fleste, vanen du ga opp og savner',
-  'Hypotetiske valg': 'vanskelige enten/eller-valg, hva hadde du valgt med 24 timer fri og ubegrensede midler, hva hadde du studert på nytt',
+  'Fortid & minner': 'barndomsminner, pinlige øyeblikk, stolte øyeblikk, noe du angrer på, en "første gang", noe du mistet, noe du fant igjen',
+  'Mat & sanser': 'smaker, lukter, matritualer, restaurantopplevelser, guilty pleasure-mat, det rareste du har spist',
+  'Reise & steder': 'favorittsted, verste reise, et sted du har bodd, en reise du husker godt, hvordan du liker å reise (pakke lett/tungt, planlegge/improvisere)',
+  'Penger & prioriteringer': 'hva er verdt å bruke mye penger på, hva fikser du aldri selv, et kjøp du er glad for, noe du sparer på i hverdagen',
+  'Teknologi & fremtid': 'hva gleder deg ved fremtiden, hva gjør deg litt nervøs med teknologi, teknologi du har sluttet å bruke, noe du fortsatt gjør analogt eller på papir',
+  'Relasjoner & sosiale situasjoner': 'hvem har lært deg mye, noe noen sa som har festet seg, pinlige sosiale situasjoner, hvordan du er i nye sosiale settinger',
+  'Arbeid & kreativitet': 'hva du er god på, hva du ville gjort annerledes, hva du driver med utenom jobb, hvilken del av jobben du liker best',
+  'Natur & dyr': 'favorittårstid, hvilket dyr du kjenner deg igjen i, det rareste du har sett i naturen, et natursted du liker å vende tilbake til',
+  'Hverdagsliv & vaner': 'morgenrutiner, guilty pleasures, rare vaner, vaner du har gitt opp, hva du gjør annerledes enn de fleste',
+  'Hypotetiske valg': 'enten/eller-valg, hva du ville gjort med en fridag, hva du ville studert hvis du startet på nytt',
 };
 
 /* ── KV helpers ── */
@@ -82,38 +82,44 @@ function buildSystemPrompt(recentQuestions, category, reactions) {
     : '';
 
   let prompt = `Du er en kreativ assistent som genererer engasjerende sjekk-inn-spørsmål for daglige standup-møter i et profesjonelt team.${dayHint}
+  
+  Generer ETT spørsmål fra kategorien: **${category}**Mulige vinkler: ${CATEGORY_HINTS[category]}
 
-    Generer ETT spørsmål fra kategorien: **${category}**
-    Mulige vinkler: ${CATEGORY_HINTS[category]}
+  ${historyHint}
 
-    ${historyHint}
+  Et godt spørsmål:
+  - Er kort og enkelt – noe man kunne sagt høyt til en kollega over kaffen, ikke noe som ville stått i et essay
+  - Spør om ÉN ting – ikke flere lag eller en innebygd vri i samme setning
+  - Er konkret nok til at folk får et eksempel som svar, men trenger ikke være overraskende eller original i seg selv
 
-    Et godt spørsmål:
-    - Er konkret, ikke abstrakt – svaret bør bli et eksempel eller en liten historie, ikke en generell mening
-    - Har en uventet vinkel på et kjent tema – ikke selve temaet i seg selv
-    - Er trygt å svare på for alle, også nye i teamet eller folk som ikke kjenner hverandre godt ennå
-    - Kan besvares kort og raskt, men åpner for en lengre historie for de som vil
-    - Er maks 1-2 setninger
+  UNNGÅ denne typen struktur – den virker konstruert og mekanisk:
+  - "Hva er en ting du [gjør/gjorde], som [betingelse], men som [overraskende motsetning]?"
+  - "Hvilken [ting] hadde du som [da], som du [sluttet med], og som du nå [innser]?"
+  Disse har flere bisetninger og et innbakt vendepunkt. Spørsmål med maks én bisetning er nesten alltid bedre.
 
-    Test spørsmålet ditt mot dette: "Kunne hvem som helst svart på dette for 20 år siden, uten at det føltes spesielt eller personlig?" Hvis ja – finn en mer spesifikk eller uventet vinkel.
+  Eksempler på ØNSKET stil – enkle og direkte:
+  - "Har du noen partytriks?"
+  - "Fortell om den beste matopplelsen du har hatt."
+  - "Jeg vet du ligner på deg selv, men har du noen gang hatt en lookalike?"
+  - "Hvis du kunne lagt til en 0 hvor som helst i livet ditt, hvor ville du lagt den?"
 
-    Tenk gjennom 2-3 alternative spørsmål, vurder dem mot kriteriene over, og returner kun det beste.
+  Eksempler på UØNSKET stil – for konstruert:
+  - "Hvilken vane hadde du som barn som du bare sluttet med en dag, og som du nå innser var ganske genial?"
+  - "Hva er en arbeidsoppgave du gjør som folk tror må være kjedelig, men som du faktisk koser deg med?"
+  - "Hva er det siste du lærte deg som ikke var nyttig i det hele tatt, men som du er glad for å vite?"
 
-    Eksempler på spørsmål som har fungert godt (varier strukturen og formen – ikke kopier dem):
-    - "Hvis du kunne lagt til en 0 hvor som helst i livet ditt, hvor ville du lagt den?"
-    - "Har du noen partytriks?"
-    - "Fortell om den beste matopplelsen du har hatt."
-    - "Jeg vet du ligner på deg selv, men har du noen gang hatt en lookalike?"
+  STRENGE FORBUD – aldri generer spørsmål om:
+  - Superkrefter eller magiske evner
+  - Hvilken kjendis eller historisk person du vil møte
+  - Øde øy med tre ting
+  - Tidsmaskin (fortids- eller fremtidsreise)
+  - Zombie-apokalypse eller verdens undergang
+  - Lotto/uventet rikdom i generell form
 
-    STRENGE FORBUD – aldri generer spørsmål om:
-    - Superkrefter eller magiske evner
-    - Hvilken kjendis eller historisk person du vil møte
-    - Øde øy med tre ting
-    - Tidsmaskin (fortids- eller fremtidsreise)
-    - Zombie-apokalypse eller verdens undergang
-    - Lotto/uventet rikdom i generell form ("hva ville du gjort med pengene") – hvis kategorien handler om penger, finn en konkret, ikke-hypotetisk vinkel i stedet
-      
-      Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen hermetegn.`;
+  Spørsmålet skal være maks 1-2 setninger, og det skal være passende for 
+  et profesjonelt miljø.
+
+  Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen hermetegn.`;
 
   const liked = recentQuestions
     .filter(q => (Number(up[q.question]) || 0) >= 1)
