@@ -83,35 +83,37 @@ function buildSystemPrompt(recentQuestions, category, reactions) {
 
   let prompt = `Du er en kreativ assistent som genererer engasjerende sjekk-inn-spørsmål for daglige standup-møter i et profesjonelt team.${dayHint}
 
-Generer ETT spørsmål fra kategorien: **${category}**
-Mulige vinkler: ${CATEGORY_HINTS[category]}
+    Generer ETT spørsmål fra kategorien: **${category}**
+    Mulige vinkler: ${CATEGORY_HINTS[category]}
 
-Velg en UVENTET vinkel – ikke det første som faller deg inn. Unngå åpenbare og generiske varianter.
+    ${historyHint}
 
-Eksempel på DÅRLIGE spørsmål (for generiske – IKKE lag disse):
-- "Hvem ville du invitert til middag?"
-- "Hva er drømmejobben din?"
-- "Hvilken reise husker du best?"
+    Et godt spørsmål:
+    - Er konkret, ikke abstrakt – svaret bør bli et eksempel eller en liten historie, ikke en generell mening
+    - Har en uventet vinkel på et kjent tema – ikke selve temaet i seg selv
+    - Er trygt å svare på for alle, også nye i teamet eller folk som ikke kjenner hverandre godt ennå
+    - Kan besvares kort og raskt, men åpner for en lengre historie for de som vil
+    - Er maks 1-2 setninger
 
-Eksempel på GODE spørsmål (konkrete, overraskende, litt uventede):
-- "Hva er det siste du lærte deg som ikke var nyttig i det hele tatt, men som du er glad for å vite?"
-- "Hvilken matvare tok det deg lengst tid å like – og hva fikk deg til å snu?"
-- "Hva er den rare vanen du har som du aldri har fortalt noen om?"
+    Test spørsmålet ditt mot dette: "Kunne hvem som helst svart på dette for 20 år siden, uten at det føltes spesielt eller personlig?" Hvis ja – finn en mer spesifikk eller uventet vinkel.
 
-STRENGE FORBUD – aldri generer spørsmål om:
-- Superkrefter eller magiske evner
-- Hvilken kjendis du vil møte
-- Øde øy med tre ting
-- Tidsmaskinen (fortid/fremtid-reise)
-- Zombie-apokalypse
+    Tenk gjennom 2-3 alternative spørsmål, vurder dem mot kriteriene over, og returner kun det beste.
 
-Spørsmålet skal være:
-- Kort (maks 1-2 setninger)
-- Konkret og samtalevekkende – ikke abstrakt
-- Passende for et profesjonelt miljø
-- Ha et klart svar folk faktisk kan gi raskt
+    Eksempler på spørsmål som har fungert godt (varier strukturen og formen – ikke kopier dem):
+    - "Hvis du kunne lagt til en 0 hvor som helst i livet ditt, hvor ville du lagt den?"
+    - "Har du noen partytriks?"
+    - "Fortell om den beste matopplelsen du har hatt."
+    - "Jeg vet du ligner på deg selv, men har du noen gang hatt en lookalike?"
 
-Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen hermetegn.`;
+    STRENGE FORBUD – aldri generer spørsmål om:
+    - Superkrefter eller magiske evner
+    - Hvilken kjendis eller historisk person du vil møte
+    - Øde øy med tre ting
+    - Tidsmaskin (fortids- eller fremtidsreise)
+    - Zombie-apokalypse eller verdens undergang
+    - Lotto/uventet rikdom i generell form ("hva ville du gjort med pengene") – hvis kategorien handler om penger, finn en konkret, ikke-hypotetisk vinkel i stedet
+      
+      Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen hermetegn.`;
 
   const liked = recentQuestions
     .filter(q => (Number(up[q.question]) || 0) >= 1)
