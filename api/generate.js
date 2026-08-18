@@ -59,21 +59,8 @@ async function saveQuestion(question, category) {
   } catch {}
 }
 
-async function getReactions() {
-  try {
-    const [up, down] = await Promise.all([
-      kv.hgetall('checkin:reactions:up'),
-      kv.hgetall('checkin:reactions:down'),
-    ]);
-    return { up: up || {}, down: down || {} };
-  } catch {
-    return { up: {}, down: {} };
-  }
-}
-
 /* ── System prompt ── */
-function buildSystemPrompt(recentQuestions, category, reactions) {
-  const { up, down } = reactions || { up: {}, down: {} };
+function buildSystemPrompt(recentQuestions, category) {
   const dayOfWeek = new Date().toLocaleDateString('nb-NO', { weekday: 'long' });
   const dayHint = dayOfWeek === 'mandag'
     ? '\nDAGENS DAG er mandag – jobb gjerne mot fremover-energi og ny-uke-stemning.'
@@ -121,26 +108,6 @@ function buildSystemPrompt(recentQuestions, category, reactions) {
 
   Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen hermetegn.`;
 
-  const liked = recentQuestions
-    .filter(q => (Number(up[q.question]) || 0) >= 1)
-    .sort((a, b) => (Number(up[b.question]) || 0) - (Number(up[a.question]) || 0))
-    .slice(0, 5);
-
-  const disliked = recentQuestions
-    .filter(q => (Number(down[q.question]) || 0) >= 1)
-    .sort((a, b) => (Number(down[b.question]) || 0) - (Number(down[a.question]) || 0))
-    .slice(0, 5);
-
-  if (liked.length > 0) {
-    const list = liked.map(q => `- ${q.question}`).join('\n');
-    prompt += `\n\nSpørsmål teamet likte godt – lag lignende (men ikke repeter):\n${list}`;
-  }
-
-  if (disliked.length > 0) {
-    const list = disliked.map(q => `- ${q.question}`).join('\n');
-    prompt += `\n\nSpørsmål teamet ikke likte – unngå disse typene:\n${list}`;
-  }
-
   const categoryRecent = recentQuestions.filter(q => q.category === category);
   if (categoryRecent.length > 0) {
     const list = categoryRecent.slice(0, 10).map(q => `- ${q.question}`).join('\n');
@@ -168,15 +135,14 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const [category, recentQuestions, reactions] = await Promise.all([
+  const [category, recentQuestions] = await Promise.all([
     getCurrentCategory(),
     getRecentQuestions(),
-    getReactions(),
   ]);
-  const systemPrompt = buildSystemPrompt(recentQuestions, category, reactions);
+  const systemPrompt = buildSystemPrompt(recentQuestions, category);
 
   const body = JSON.stringify({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-5',
     max_tokens: 150,
     system: systemPrompt,
     messages: [{ role: 'user', content: 'Generer ett spørsmål.' }]

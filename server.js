@@ -14,7 +14,7 @@ try {
 
 /* ── Storage backend ──
    Production uses Vercel KV. When KV isn't configured (local dev), fall back to
-   a small JSON file on disk so history & reactions still work locally. */
+   a small JSON file on disk so history still works locally. */
 const useKv = !!(kv && process.env.KV_REST_API_URL);
 const DATA_FILE = path.join(__dirname, '.checkin-data.json');
 
@@ -22,7 +22,7 @@ function readLocal() {
   try {
     return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   } catch {
-    return { questions: [], reactions: { up: {}, down: {} }, categoryIndex: 0 };
+    return { questions: [], categoryIndex: 0 };
   }
 }
 
@@ -113,50 +113,8 @@ async function getAllQuestions() {
   }
 }
 
-async function getReactions() {
-  if (!useKv) {
-    const r = readLocal().reactions || { up: {}, down: {} };
-    return { up: r.up || {}, down: r.down || {} };
-  }
-  try {
-    const [up, down] = await Promise.all([
-      kv.hgetall('checkin:reactions:up'),
-      kv.hgetall('checkin:reactions:down'),
-    ]);
-    return { up: up || {}, down: down || {} };
-  } catch {
-    return { up: {}, down: {} };
-  }
-}
-
-async function saveReaction(question, reaction) {
-  if (!useKv) {
-    const data = readLocal();
-    data.reactions = data.reactions || { up: {}, down: {} };
-    const bucket = reaction === 'up' ? data.reactions.up : data.reactions.down;
-    bucket[question] = (Number(bucket[question]) || 0) + 1;
-    writeLocal(data);
-    return {
-      upvotes: Number(data.reactions.up[question]) || 0,
-      downvotes: Number(data.reactions.down[question]) || 0,
-    };
-  }
-  try {
-    const key = reaction === 'up' ? 'checkin:reactions:up' : 'checkin:reactions:down';
-    await kv.hincrby(key, question, 1);
-    const [upvotes, downvotes] = await Promise.all([
-      kv.hget('checkin:reactions:up', question),
-      kv.hget('checkin:reactions:down', question),
-    ]);
-    return { upvotes: Number(upvotes) || 0, downvotes: Number(downvotes) || 0 };
-  } catch {
-    return { upvotes: 0, downvotes: 0 };
-  }
-}
-
 /* ── System prompt ── */
-function buildSystemPrompt(recentQuestions, category, reactions) {
-  const { up, down } = reactions || { up: {}, down: {} };
+function buildSystemPrompt(recentQuestions, category) {
   const dayOfWeek = new Date().toLocaleDateString('nb-NO', { weekday: 'long' });
   const dayHint = dayOfWeek === 'mandag'
     ? '\nDAGENS DAG er mandag – jobb gjerne mot fremover-energi og ny-uke-stemning.'
@@ -196,26 +154,6 @@ Spørsmålet skal være:
 
 Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen hermetegn.`;
 
-  const liked = recentQuestions
-    .filter(q => (Number(up[q.question]) || 0) >= 1)
-    .sort((a, b) => (Number(up[b.question]) || 0) - (Number(up[a.question]) || 0))
-    .slice(0, 5);
-
-  const disliked = recentQuestions
-    .filter(q => (Number(down[q.question]) || 0) >= 1)
-    .sort((a, b) => (Number(down[b.question]) || 0) - (Number(down[a.question]) || 0))
-    .slice(0, 5);
-
-  if (liked.length > 0) {
-    const list = liked.map(q => `- ${q.question}`).join('\n');
-    prompt += `\n\nSpørsmål teamet likte godt – lag lignende (men ikke repeter):\n${list}`;
-  }
-
-  if (disliked.length > 0) {
-    const list = disliked.map(q => `- ${q.question}`).join('\n');
-    prompt += `\n\nSpørsmål teamet ikke likte – unngå disse typene:\n${list}`;
-  }
-
   const categoryRecent = recentQuestions.filter(q => q.category === category);
   if (categoryRecent.length > 0) {
     const list = categoryRecent.slice(0, 10).map(q => `- ${q.question}`).join('\n');
@@ -234,7 +172,7 @@ Svar KUN med selve spørsmålet – ingen forklaring, ingen prefiks, ingen herme
 function callAnthropic(systemPrompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: 150,
       system: systemPrompt,
       messages: [{ role: 'user', content: 'Generer ett spørsmål.' }]
@@ -277,17 +215,6 @@ function callAnthropic(systemPrompt) {
   });
 }
 
-/* ── Body parser helper ── */
-function parseBody(req) {
-  return new Promise((resolve) => {
-    let raw = '';
-    req.on('data', chunk => { raw += chunk; });
-    req.on('end', () => {
-      try { resolve(JSON.parse(raw)); } catch { resolve({}); }
-    });
-  });
-}
-
 /* ── HTTP server ── */
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
@@ -315,12 +242,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
-      const [category, recentQuestions, reactions] = await Promise.all([
+      const [category, recentQuestions] = await Promise.all([
         getCurrentCategory(),
         getRecentQuestions(),
-        getReactions(),
       ]);
-      const systemPrompt = buildSystemPrompt(recentQuestions, category, reactions);
+      const systemPrompt = buildSystemPrompt(recentQuestions, category);
       const question = await callAnthropic(systemPrompt);
       await saveQuestion(question, category);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -329,19 +255,6 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message || 'Noe gikk galt.' }));
     }
-    return;
-  }
-
-  if (req.method === 'POST' && req.url === '/react') {
-    const { question, reaction } = await parseBody(req);
-    if (!question || !['up', 'down'].includes(reaction)) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid input' }));
-      return;
-    }
-    const counts = await saveReaction(question, reaction);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, ...counts }));
     return;
   }
 

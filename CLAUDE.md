@@ -29,4 +29,4 @@ The two backends have **separate system prompts**: `api/generate.js` uses a simp
 
 ## Environment
 
-`ANTHROPIC_API_KEY` must be set as an environment variable (locally in the shell, on Vercel via project settings). The model used is `claude-sonnet-4-20250514` with `max_tokens: 150`.
+`ANTHROPIC_API_KEY` must be set as an environment variable (locally in the shell, on Vercel via project settings). The model used is `claude-sonnet-5` with `max_tokens: 150`.
