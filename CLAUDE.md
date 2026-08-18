@@ -22,11 +22,16 @@ This is a tiny two-runtime app:
 
 The two backends have **separate system prompts**: `api/generate.js` uses a simpler prompt (no category rotation, no ban list); `server.js` has the more detailed rotating-category prompt with an explicit ban list. Keep them in sync if you change question generation behaviour.
 
-**Frontend (`index.html`)** — single self-contained file with three IIFE sections:
+`POST /submit-question` follows the same two-runtime pattern (`server.js` route + `api/submit-question.js`, rewritten via `vercel.json`): it forwards a user-submitted question to a Google Apps Script Web App, which appends it as a row to the same Google Sheet that `SHEET_CSV_URL` (in `index.html`) reads from.
+
+**Frontend (`index.html`)** — single self-contained file with four IIFE sections:
 1. **Canvas scene** — pixel-art standup scene rendered with `requestAnimationFrame`; characters bob, blink, and face the whiteboard.
 2. **Question generation** — `fetch('/generate')`, typewriter reveal, `file:` protocol fallback.
 3. **Confetti** — spawns on question reveal; uses a separate overlay `<canvas>`.
+4. **Add-question modal** — plus-icon button in the action bar opens a modal to submit a new question via `fetch('/submit-question')`; the button briefly shows a checkmark on success.
 
 ## Environment
 
 `ANTHROPIC_API_KEY` must be set as an environment variable (locally in the shell, on Vercel via project settings). The model used is `claude-sonnet-5` with `max_tokens: 150`.
+
+`SHEET_SUBMIT_URL` must be set to a Google Apps Script Web App `/exec` URL (deployed with "Execute as: me", "Who has access: Anyone") whose `doPost(e)` appends `JSON.parse(e.postData.contents).question` as a new row to the Google Sheet. Without it, `/submit-question` returns an error and the frontend surfaces it in the modal.

@@ -6,6 +6,13 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 
+/* ── Google Sheet write endpoint (Apps Script Web App) ──
+   Deploy a Google Apps Script Web App (Deploy ▸ New deployment ▸ Web app,
+   "Execute as: me", "Who has access: Anyone") whose doPost(e) appends
+   JSON.parse(e.postData.contents).question as a new row in the same sheet
+   that SHEET_CSV_URL (in index.html) reads from. Paste the /exec URL here. */
+const SHEET_SUBMIT_URL = process.env.SHEET_SUBMIT_URL;
+
 /* ── Vercel KV (optional for local dev) ── */
 let kv = null;
 try {
@@ -215,6 +222,24 @@ function callAnthropic(systemPrompt) {
   });
 }
 
+/* ── Request body helper ── */
+function readJsonBody(req, limit = 10_000) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > limit) { reject(new Error('Payload too large')); req.destroy(); return; }
+      data += chunk;
+    });
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}); }
+      catch { reject(new Error('Invalid JSON')); }
+    });
+    req.on('error', reject);
+  });
+}
+
 /* ── HTTP server ── */
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
@@ -258,6 +283,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/submit-question') {
+    if (!SHEET_SUBMIT_URL) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'SHEET_SUBMIT_URL er ikke satt på serveren.' }));
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const question = typeof body.question === 'string' ? body.question.trim() : '';
+      if (!question) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Spørsmålet kan ikke være tomt.' }));
+        return;
+      }
+      if (question.length > 500) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Spørsmålet er for langt (maks 500 tegn).' }));
+        return;
+      }
+      const sheetRes = await fetch(SHEET_SUBMIT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+      });
+      if (!sheetRes.ok) throw new Error('Sheet responded with ' + sheetRes.status);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Kunne ikke lagre spørsmålet i arket.' }));
+    }
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });
@@ -266,4 +325,5 @@ server.listen(PORT, () => {
   console.log(`\n  ▶ Dagens Sjekk-inn kjører på http://localhost:${PORT}\n`);
   if (!API_KEY) console.warn('  ⚠  ADVARSEL: ANTHROPIC_API_KEY er ikke satt!\n');
   if (!useKv) console.warn(`  ⚠  KV_REST_API_URL ikke satt – bruker lokal fil (${path.basename(DATA_FILE)}) for historikk.\n`);
+  if (!SHEET_SUBMIT_URL) console.warn('  ⚠  SHEET_SUBMIT_URL ikke satt – "Legg til spørsmål" kan ikke lagre til arket.\n');
 });
